@@ -4,7 +4,6 @@
  */
 
 import net from 'net';
-import { getVncInfo } from '../../../utils/ipc.js';
 
 /**
  * 处理 VNC WebSocket 升级请求
@@ -13,19 +12,19 @@ import { getVncInfo } from '../../../utils/ipc.js';
  * @param {Buffer} head - 升级请求的头部数据
  * @param {string} authToken - 有效的认证令牌
  */
-export async function handleVncUpgrade(req, socket, head, authToken) {
+export async function handleVncUpgrade(req, socket, head, authToken, getRuntimeManager, profileId) {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     // 验证 token
     const token = url.searchParams.get('token');
-    if (token !== authToken) {
+    if (authToken && token !== authToken) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
     }
 
     // 获取 VNC 信息
-    const vncInfo = await getVncInfo();
+    const vncInfo = getRuntimeManager?.()?.getVncInfo(profileId);
     if (!vncInfo || !vncInfo.enabled) {
         socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n');
         socket.destroy();

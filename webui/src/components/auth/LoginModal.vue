@@ -1,82 +1,41 @@
 <script setup>
 import { ref } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
-import { message } from 'ant-design-vue';
-import { LockOutlined } from '@ant-design/icons-vue';
 
-const props = defineProps({
-    visible: {
-        type: Boolean,
-        required: true
-    }
-});
-
+defineProps({ visible: { type: Boolean, required: true } });
 const emit = defineEmits(['update:visible', 'success']);
-
-const settingsStore = useSettingsStore();
-const token = ref(settingsStore.token);
+const settings = useSettingsStore();
+const token = ref(settings.token);
 const loading = ref(false);
+const error = ref('');
 
-const handleLogin = async () => {
-    if (!token.value) {
-        message.warning('请输入 Token');
-        return;
-    }
-
-    loading.value = true;
-    try {
-        const originalToken = settingsStore.token;
-        settingsStore.setToken(token.value);
-
-        const success = await settingsStore.checkAuth();
-        if (success) {
-            message.success('验证成功');
-            emit('success');
-            emit('update:visible', false);
-        } else {
-            message.error('Token 验证失败，请检查是否正确');
-            settingsStore.setToken(originalToken);
-        }
-    } catch (e) {
-        message.error('验证过程发生错误');
-    } finally {
-        loading.value = false;
-    }
-};
+async function submit() {
+  if (!token.value) return;
+  loading.value = true;
+  error.value = '';
+  const previous = settings.token;
+  settings.setToken(token.value);
+  if (await settings.checkAuth()) {
+    emit('success');
+    emit('update:visible', false);
+  } else {
+    settings.setToken(previous);
+    error.value = '访问令牌无效';
+  }
+  loading.value = false;
+}
 </script>
 
 <template>
-    <a-modal :open="visible" title="需要身份验证" :closable="false" :maskClosable="false" :footer="null" width="400px"
-        centered>
-        <div style="padding: 20px 0;">
-            <div style="text-align: center; margin-bottom: 24px;">
-                <a-avatar :size="64" style="background-color: #1890ff">
-                    <template #icon>
-                        <LockOutlined />
-                    </template>
-                </a-avatar>
-                <div style="margin-top: 16px; font-size: 16px; font-weight: 500;">
-                    WebAI2API 管理面板
-                </div>
-                <div style="color: #8c8c8c; margin-top: 8px;">
-                    请输入访问 API Token 以继续
-                </div>
-            </div>
-
-            <a-form layout="vertical">
-                <a-form-item label="API Token">
-                    <a-input-password v-model:value="token" placeholder="请输入 API Token" size="large"
-                        @pressEnter="handleLogin">
-                        <template #prefix>
-                            <LockOutlined style="color: rgba(0,0,0,.25)" />
-                        </template>
-                    </a-input-password>
-                </a-form-item>
-
-                <a-button type="primary" block size="large" :loading="loading" @click="handleLogin">
-                    验证并登录
-                </a-button>
-            </a-form>
-        </div>
-    </a-modal>
+  <div v-if="visible" class="modal-scrim">
+    <section class="modal-card" style="max-width:420px" role="dialog" aria-modal="true" aria-label="访问服务">
+      <header><div><span class="eyebrow">ACCESS</span><h2 style="margin:4px 0 0">连接 WebAI2API</h2></div></header>
+      <div class="modal-content">
+        <p style="margin:0 0 17px;color:var(--muted);line-height:1.6">输入此服务配置的访问令牌。</p>
+        <div class="field"><label>访问令牌</label><input v-model="token" type="password" autofocus placeholder="sk-…" @keyup.enter="submit" /></div>
+        <div v-if="error" class="inline-warning" style="color:var(--danger);background:var(--danger-soft)">{{ error }}</div>
+      </div>
+      <footer class="modal-actions"><button class="button primary" :disabled="loading || !token" @click="submit">{{ loading ? '正在验证' : '继续' }}</button></footer>
+    </section>
+  </div>
 </template>

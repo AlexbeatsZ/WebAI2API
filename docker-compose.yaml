@@ -1,6 +1,6 @@
 services:
   webai-2api:
-    image: foxhui/webai-2api:latest
+    image: ghcr.io/alexbeatsz/webai2api:4.0.0
     container_name: webai-2api
     restart: unless-stopped
     ports:
@@ -9,3 +9,9 @@ services:
       - ./data:/app/data  # 数据和配置持久化，config.yaml 会自动生成到此目录
     shm_size: '2gb'
     init: true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/admin/auth/status').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 120s
+      retries: 3

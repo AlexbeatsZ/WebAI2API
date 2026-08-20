@@ -43,7 +43,7 @@ export function createGlobalRouter(context) {
 
     // 创建子路由处理器
     const handleOpenAIRequest = loginMode ? null : createOpenAIRouter(context);
-    const handleAdminRequest = createAdminRouter({ config, queueManager, tempDir, getSafeMode });
+    const handleAdminRequest = createAdminRouter({ config, queueManager, tempDir, getSafeMode, getRuntimeManager: context.getRuntimeManager });
 
     /**
      * 主路由处理函数
@@ -51,6 +51,12 @@ export function createGlobalRouter(context) {
     return async function handleRequest(req, res) {
         const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
         const pathname = parsedUrl.pathname;
+
+        if (req.method === 'GET' && pathname === '/admin/auth/status') {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ enabled: Boolean(authToken) }));
+            return;
+        }
 
         // ==================== 静态文件服务 ====================
         if (req.method === 'GET' && !pathname.startsWith('/v1') && !pathname.startsWith('/admin')) {

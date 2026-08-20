@@ -33,7 +33,13 @@ function writeConfig(config) {
         indent: 2,
         lineWidth: 0 // 不自动换行
     });
-    fs.writeFileSync(configPath, content, 'utf8');
+    if (process.platform === 'win32') {
+        fs.writeFileSync(configPath, content, 'utf8');
+    } else {
+        const temporaryPath = `${configPath}.${process.pid}.tmp`;
+        fs.writeFileSync(temporaryPath, content, 'utf8');
+        fs.renameSync(temporaryPath, configPath);
+    }
     logger.info('管理器', `配置已保存到 ${configPath}`);
 }
 
@@ -48,7 +54,11 @@ export function getServerConfig() {
         authToken: config.server?.auth || '',
         keepaliveMode: config.server?.keepalive?.mode || 'comment',
         logLevel: config.logLevel || 'info',
-        imageMarkdown: config.server?.imageMarkdown || false
+        imageMarkdown: config.server?.imageMarkdown || false,
+        queueBuffer: config.runtime?.queueBuffer ?? 2,
+        imageLimit: config.runtime?.imageLimit ?? 5,
+        requestTimeoutMs: config.runtime?.requestTimeoutMs ?? 120000,
+        maxRetries: config.runtime?.maxRetries ?? 2
     };
 }
 
@@ -69,6 +79,11 @@ export function saveServerConfig(data) {
     }
     if (data.logLevel !== undefined) config.logLevel = data.logLevel;
     if (data.imageMarkdown !== undefined) config.server.imageMarkdown = data.imageMarkdown;
+    if (!config.runtime) config.runtime = {};
+    if (data.queueBuffer !== undefined) config.runtime.queueBuffer = data.queueBuffer;
+    if (data.imageLimit !== undefined) config.runtime.imageLimit = data.imageLimit;
+    if (data.requestTimeoutMs !== undefined) config.runtime.requestTimeoutMs = data.requestTimeoutMs;
+    if (data.maxRetries !== undefined) config.runtime.maxRetries = data.maxRetries;
 
     writeConfig(config);
 }
@@ -150,8 +165,8 @@ export function saveBrowserConfig(data) {
 export function getQueueConfig() {
     const config = readRawConfig();
     return {
-        queueBuffer: config.queue?.queueBuffer ?? 2,
-        imageLimit: config.queue?.imageLimit ?? 5
+        queueBuffer: config.runtime?.queueBuffer ?? 2,
+        imageLimit: config.runtime?.imageLimit ?? 5
     };
 }
 
@@ -162,11 +177,22 @@ export function getQueueConfig() {
 export function saveQueueConfig(data) {
     const config = readRawConfig();
 
-    if (!config.queue) config.queue = {};
+    if (!config.runtime) config.runtime = {};
 
-    if (data.queueBuffer !== undefined) config.queue.queueBuffer = data.queueBuffer;
-    if (data.imageLimit !== undefined) config.queue.imageLimit = data.imageLimit;
+    if (data.queueBuffer !== undefined) config.runtime.queueBuffer = data.queueBuffer;
+    if (data.imageLimit !== undefined) config.runtime.imageLimit = data.imageLimit;
 
+    writeConfig(config);
+}
+
+export function getBrowserProfilesConfig() {
+    const config = readRawConfig();
+    return structuredClone(config.browserProfiles || []);
+}
+
+export function saveBrowserProfilesConfig(profiles) {
+    const config = readRawConfig();
+    config.browserProfiles = structuredClone(profiles);
     writeConfig(config);
 }
 
@@ -278,17 +304,14 @@ export function saveAdaptersConfig(data) {
  */
 export function getPoolConfig() {
     const config = readRawConfig();
-    const pool = config.backend?.pool || {};
-    const failover = pool.failover || {};
-
     return {
-        strategy: pool.strategy || 'least_busy',
-        waitTimeout: pool.waitTimeout != null ? Math.round(pool.waitTimeout / 1000) : 120,
+        strategy: 'least_loaded',
+        waitTimeout: Math.round((config.runtime?.requestTimeoutMs ?? 120000) / 1000),
         failover: {
-            enabled: failover.enabled !== false, // 默认 true
-            maxRetries: failover.maxRetries ?? 2,
-            imgDlRetry: failover.imgDlRetry || false,
-            imgDlRetryMaxRetries: failover.imgDlRetryMaxRetries ?? 2
+            enabled: true,
+            maxRetries: config.runtime?.maxRetries ?? 2,
+            imgDlRetry: false,
+            imgDlRetryMaxRetries: 0
         }
     };
 }
@@ -299,33 +322,17 @@ export function getPoolConfig() {
  */
 export function savePoolConfig(data) {
     const config = readRawConfig();
-
-    if (!config.backend) config.backend = {};
-    if (!config.backend.pool) config.backend.pool = {};
-
-    if (data.strategy !== undefined) {
-        config.backend.pool.strategy = data.strategy;
-    }
+    if (!config.runtime) config.runtime = {};
 
     if (data.waitTimeout !== undefined) {
         // 前端传入秒，写入 YAML 为毫秒
         const ms = Number(data.waitTimeout) * 1000;
-        if (ms > 0) config.backend.pool.waitTimeout = ms;
+        if (ms > 0) config.runtime.requestTimeoutMs = ms;
     }
 
     if (data.failover) {
-        if (!config.backend.pool.failover) config.backend.pool.failover = {};
-        if (data.failover.enabled !== undefined) {
-            config.backend.pool.failover.enabled = data.failover.enabled;
-        }
         if (data.failover.maxRetries !== undefined) {
-            config.backend.pool.failover.maxRetries = data.failover.maxRetries;
-        }
-        if (data.failover.imgDlRetry !== undefined) {
-            config.backend.pool.failover.imgDlRetry = data.failover.imgDlRetry;
-        }
-        if (data.failover.imgDlRetryMaxRetries !== undefined) {
-            config.backend.pool.failover.imgDlRetryMaxRetries = data.failover.imgDlRetryMaxRetries;
+            config.runtime.maxRetries = data.failover.maxRetries;
         }
     }
 

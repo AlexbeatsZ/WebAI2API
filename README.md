@@ -2,314 +2,119 @@
 
 简体中文 | [English](README_EN.md)
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/296a518e-c42b-4e39-8ff6-9b4381ed4f6e" width="49%" />
-  <img src="https://github.com/user-attachments/assets/bfa30ece-6947-4f18-b2c9-ccc8087b7e89" width="49%" />
-</p>
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/5b15ebd2-7593-4f0e-8561-83d6ba5d88ab" width="49%" />
-  <img src="https://github.com/user-attachments/assets/53deea29-4071-4a07-8a61-211761c5f2f7" width="49%" />
-</p>
+WebAI2API 通过独立浏览器连接操作已登录的 AI 网站，并提供 OpenAI 兼容的聊天接口。文本、图片与视频是模型能力，不需要为相同网站配置不同的“生成模式”。
 
-## 📑 目录
+## 工作方式
 
-- [快速部署](#-快速部署)
-- [快速开始](#-快速开始)
-- [使用方法](#-使用方法)
-- [API 接口](#-api-接口)
-- [设备配置参考](#-设备配置参考)
+- 浏览器连接：一套登录目录、指纹、代理和独立浏览器进程。
+- 网站：连接中要使用的网页服务，例如 Gemini、AI Studio 或 ChatGPT。
+- 并发页：同一连接中可同时工作的独立页面；每页一次只处理一个请求。
+- 强隔离：使用不同连接隔离账号、代理、浏览器故障和实时桌面。
 
----
+调度器只把请求分配给兼容且空闲的页面。页面连续失败会被恢复或隔离；重启单个连接不会中断其他连接。
 
-## 📝 项目简介
-
-**WebAI2API** 是一个基于 **Camoufox (Playwright)** 的网页版 AI 服务转通用 API 的工具。通过模拟人类操作与 LMArena、Gemini 等网站交互, 提供兼容 **OpenAI 格式** 的接口服务, 同时支持 **多窗口并发** 与 **多账号管理**(浏览器实例数据隔离)。
-
-### ✨ 主要特性
-
-- 🤖 **拟人交互**: 模拟人类打字与鼠标轨迹, 通过特征伪装规避自动化检测
-- 🔄 **接口兼容**: 提供标准 OpenAI 格式接口, 支持流式响应与心跳保活
-- 🚀 **并发隔离**: 支持多窗口并发执行, 可配置独立代理,实现多账号浏览器实例级数据隔离
-- 🛡️ **稳定防护**: 内置任务队列、负载均衡、故障转移、错误重试等基础功能
-- 🎨 **网页管理**: 提供可视化管理界面, 支持实时日志查看、VNC 连接、适配器管理等
-
-### 📋 支持列表
-
-| 网站名称 | 文本生成 | 图片生成 | 视频生成 |
-| :--- | :---: | :---: | :---: | 
-| [**LMArena**](https://lmarena.ai/) | ✅ | ✅ | 🚫 |
-| [**Gemini Enterprise Business**](https://business.gemini.google/) | ✅ | ✅ | ✅ |
-| [**Nano Banana Free**](https://nanobananafree.ai/) | 🚫 | ✅ | 🚫 |
-| [**zAI**](https://zai.is/) | ✅ | ✅ | 🚫 |
-| [**Google Gemini**](https://gemini.google.com/) | ✅ | ✅💧 | ✅💧 | 
-| [**ZenMux**](https://zenmux.ai/) | ✅ | ❌ | 🚫 | 
-| [**ChatGPT**](https://chatgpt.com/) | ✅ | ✅ | 🚫 | 
-| [**DeepSeek**](https://chat.deepseek.com/) | ✅ | 🚫 | 🚫 | 
-| [**Sora**](https://sora.chatgpt.com/) | 🚫 | 🚫 | ✅💧 | 
-| [**Google Flow**](https://labs.google/fx/zh/tools/flow) | 🚫 | ✅ | ❌ | 
-| [**豆包**](https://www.doubao.com/) | ✅ | ✅ | ❌ | 
-| 待续... | - | - | - | 
-
-> [!NOTE]
-> **获取完整模型列表**: 通过 `GET /v1/models` 接口查看当前配置下所有可用模型及其详细信息。
-> 
-> ✅目前支持；❌目前不支持，但未来可能会支持；🚫网站不支持, 未来是否在支持看网站具体情况；💧结果带水印且无法去除；
-
----
-
-## 🚀 快速部署
-
-本项目支持 **源码直接运行** 和 **Docker 容器化部署** 两种方式。
-
-### 📋 环境要求
-
-- **Node.js**: v20.0.0+ (ABI 115+)
-- **操作系统**: Windows / Linux / macOS
-- **核心依赖**: Camoufox (安装过程中自动获取)
-
-### 🛠️ 方式一:手动部署
-
-1. **安装与配置**
-   ```bash
-   # 1. 安装 NPM 依赖
-   pnpm install
-
-   # 2. 安装浏览器等预编译依赖
-   # ⚠️ 该脚本需连接 GitHub 下载资源。若网络受限，请使用代理
-   npm run init 
-   # 使用代理
-   # 直接使用 -proxy 可交互式输入代理配置
-   npm run init -- -proxy=http://username:passwd@host:port
-
-   # 3. Linux 依赖安装
-   # 其他发行版请前往文档中心查找或者自行搜索
-   apt install -y xvfb x11vnc libgtk-3-0 libx11-xcb1 libasound2
-   
-   ```
-
-2. **启动服务**
-   ```bash
-   # 标准启动
-   npm start
-
-   # Linux 系统 - 虚拟显示启动
-   npm start -- -xvfb -vnc
-
-   # 登录模式 (会临时强行禁用无头模式和自动化)
-   npm start -- -login (-xvfb -vnc)
-   ```
-
-### 🐳 方式二:Docker 部署
-
-> [!WARNING]
-> **安全提醒**: 
-> - Docker 镜像默认开启虚拟显示器 (Xvfb) 和 VNC 服务
-> - 可通过 WebUI 的虚拟显示器板块连接
-> - **WebUI 传输过程未加密, 公网环境请使用 SSH 隧道或 HTTPS**
-
-**Docker CLI 启动**
-```bash
-docker run -d --name webai-2api \
-  -p 3000:3000 \
-  -v "$(pwd)/data:/app/data" \
-  --shm-size=2gb \
-  foxhui/webai-2api:latest
-```
-
-**Docker Compose 启动**
-```bash
-docker-compose up -d
-```
-
----
-
-## ⚡ 快速开始
-
-### 1. 调整配置文件
-
-程序初次运行会从`config.example.yaml`复制配置文件到`data/config.yaml`
-
-**配置文件的生效需要重启程序！**
+## Docker
 
 ```yaml
-server:
-  # 监听端口
-  port: 3000
-  # 鉴权 API Token (可使用 npm run genkey 生成)
-  # 该配置会对 API 接口和 WebUI 生效
-  auth: sk-change-me-to-your-secure-key
+services:
+  webai-2api:
+    image: ghcr.io/alexbeatsz/webai2api:4.0.0
+    container_name: webai-2api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    shm_size: 2gb
+    init: true
 ```
 
-> [!TIP]
-> **完整配置说明**: 请参考 [config.example.yaml](config.example.yaml) 文件中的详细注释,或访问 [WebAI2API 文档中心](https://foxhui.github.io/WebAI2API/) 查看完整配置指南。
-
-### 2. 访问 Web 管理界面
-
-服务启动后, 打开浏览器访问:
-```
-http://localhost:3000
+```bash
+docker compose up -d
 ```
 
-> [!TIP]
-> **远程访问**: 将 `localhost` 替换为服务器 IP 地址即可远程访问。
-> **API Token**: 配置文件中的`auth`所配置的鉴权密钥。
-> **安全建议**: 公网环境建议使用 Nginx/Caddy 配置 HTTPS 或通过 SSH 隧道访问。
+首次启动会把 `config.example.yaml` 复制为 `data/config.yaml`。打开 `http://localhost:3000`，在“实时浏览器”中分别完成各连接所需的登录、条款或验证。
 
-### 3. 初始化账号登录
+## 配置
 
-> [!IMPORTANT]
-> **首次使用必须完成以下初始化步骤**:
+```yaml
+version: 4
+runtime:
+  scheduling: least_loaded
+  queueBuffer: 2
+  requestTimeoutMs: 120000
+  maxRetries: 2
+  imageLimit: 5
 
-1. **连接虚拟显示器**:
-   - Linux/Docker: 在 WebUI 的"虚拟显示器"板块连接
-   - Windows: 直接在弹出的浏览器窗口中操作
+browserProfiles:
+  - id: google-main
+    name: Google
+    userDataDir: camoufoxUserData_Meta
+    proxy:
+      enabled: true
+      type: http
+      host: host.docker.internal
+      port: 7897
+    sites:
+      - id: gemini-web
+        pages: 2
+      - id: ai-studio
+        pages: 2
+```
 
-2. **完成账号登录**:
-   - 手动登录所需的 AI 网站账号 (账号要求可进入 WebUI 的适配器管理中查看)
-   - 在输入框发送任意消息, 触发并完成人机验证 (如需要)
-   - 同意服务条款或者新手指引 (如需要)
-   - 确保不再有初次使用相关内容的阻拦
+两个浏览器连接不能共享同一个 `userDataDir`。修改连接或浏览器设置后需重启服务；移除连接不会删除登录目录。
 
-3. **SSH 隧道连接示例**(公网服务器推荐):
-   ```bash
-   # 在本地终端运行,将服务器的 WebUI 映射到本地
-   ssh -L 3000:127.0.0.1:3000 root@服务器IP
-   
-   # 然后在本地访问
-   # WebUI: http://localhost:3000
-   ```
+### 从 v3 迁移
 
----
+v4 不会隐式读取 `instances`/`workers`。先预览，再写入一个新文件：
 
-## 📖 使用方法
+```bash
+npm run migrate-config -- --input data/config.yaml --output data/config.v4.yaml --dry-run
+npm run migrate-config -- --input data/config.yaml --output data/config.v4.yaml --write
+```
 
-### 运行模式说明
+迁移器不会覆盖目标文件，也不会移动、合并或删除浏览器登录目录。
 
-> [!NOTE]
-> **关于有头/无头模式**:
-> - **有头模式**(默认): 显示浏览器窗口, 便于调试和人工干预
-> - **无头模式**: 后台运行, 节省资源但无法查看浏览器界面, 且可能会被网站检测
-> 
-> **建议**: 为降低风控, **强烈建议长期保持非无头模式运行**(或使用虚拟显示器 Xvfb)。
+## API
 
----
+`GET /v1/models` 返回当前连接可用的规范模型 ID、输入输出能力、推理能力和可用状态。模型 ID 始终包含网站命名空间，例如：
 
-## 🔌 API 接口
+- `gemini-web/gemini-3.1-pro`
+- `ai-studio/gemini-3.1-pro`
 
-> [!TIP]
-> **详细文档**: 请访问 [WebAI2API 文档中心](https://foxhui.github.io/WebAI2API/) 获取更全面的配置指南与接口说明。
+v4 请求必须明确提供这里返回的模型 ID：
 
-### 1. OpenAI 兼容接口
-
-> [!WARNING]
-> **并发限制与流式保活建议**
-> 
-> 本项目通过模拟真实浏览器操作实现, 处理过程根据实际情况时间可能有所变化, 当积压的任务超过设置的数量时会直接拒绝非流式模式的请求。
-> 
-> **💡 强烈建议开启流式模式**: 服务器将发送保活心跳包, 可无限排队避免超时。
-
-#### 文本对话
-
-**端点**: `POST /v1/chat/completions`
-
-**请求示例**:
 ```bash
 curl http://localhost:3000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
-    "model": "gemini-3-pro",
+    "model": "ai-studio/gemini-3.1-pro",
     "messages": [
-      {"role": "user", "content": "你好,请介绍一下你自己"}
+      {"role": "system", "content": "回答要准确、简洁。"},
+      {"role": "user", "content": "解释量子隧穿。"}
     ],
     "stream": true
   }'
 ```
 
-#### 多模态请求(文生图/图生图)
+图片输入使用 OpenAI 的 `image_url` 内容块和 Base64 Data URL。完整消息角色、顺序与历史会被保留；AI Studio 会把 system 消息写入 System Instructions。
 
-**支持的图片格式**:
-- **格式**: PNG, JPEG, GIF, WebP
-- **数量**: 最大 10 张(具体限制因网站而异)
-- **数据格式**: 必须使用 Base64 Data URL 格式
-- **自动转换**: 服务器会自动将所有图片转换为 JPG 格式以保证兼容性
+## 本地开发
 
-#### 参数说明
+需要 Node.js 22、pnpm、Camoufox，以及 Linux 上的 Xvfb/x11vnc。
 
-| 参数 | 类型 | 必填 | 说明 |
-| :--- | :--- | :---: | :--- |
-| `model` | string | ✅ | 模型名称, 可通过 `/v1/models` 获取可用列表 |
-| `stream` | boolean | 推荐 | 是否开启流式响应, 包含心跳保活机制 |
-
-> [!NOTE]
-> **关于流式保活 (Heartbeat)**
->
-> 为防止长连接超时, 系统提供两种保活模式 (可在配置中切换):
-> 1. **Comment 模式 (默认/推荐)**: 发送 `:keepalive` 注释, 符合 SSE 标准,兼容性最好
-> 2. **Content 模式**: 发送空内容的 data 包, 仅用于必须收到 JSON 数据才重置超时的特殊客户端
-
-### 2. 获取模型列表
-
-**端点**: `GET /v1/models`
-
-**请求示例**:
 ```bash
-curl http://localhost:3000/v1/models \
-  -H "Authorization: Bearer YOUR_API_KEY"
+pnpm install
+pnpm --dir webui install
+npm run init
+npm test
+pnpm --dir webui build
+npm start
 ```
 
-### 3. 获取 Cookies
+浏览器连接的 VNC 只监听容器内部回环地址，并通过管理端的连接专属 WebSocket 转发。若 `server.auth` 留空，API 和管理端均不验证身份；只应在可信网络使用。
 
-**功能说明**: 利用本项目的自动续登功能获取最新 Cookie 供其他工具使用。
+## License
 
-**端点**: `GET /v1/cookies`
-
-**参数**:
-- `name` (可选): 浏览器实例名称,默认为 `default`
-- `domain` (可选): 过滤指定域名的 Cookie
-
-**请求示例**:
-```bash
-# 获取指定实例和域名的 Cookie
-curl "http://localhost:3000/v1/cookies?name=browser_default&domain=lmarena.ai" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
----
-
-## 📊 设备配置参考
-
-| 资源 | 最低配置 | 推荐配置 (单实例) | 推荐配置 (多实例) |
-| :--- | :--- | :--- | :--- |
-| **CPU** | 1 核 | 2 核及以上 | 2 核及以上 |
-| **内存** | 1 GB | 2 GB 及以上 | 4 GB 及以上 |
-| **磁盘** | 2 GB 可用空间 | 5 GB 及以上 | 7 GB 及以上 |
-
-**实测环境表现** (均为单浏览器实例):
-- **Oracle 免费机** (1C1G, Debian 12): 资源紧张, 比较卡顿, 仅供尝鲜或轻度使用
-- **阿里云轻量云** (2C2G, Debian 11): 运行流畅但实例也会卡顿, 项目开发测试所用机型
-
----
-
-## 📄 许可证和免责声明
-
-本项目采用 [MIT License](LICENSE) 开源。
-
-> [!CAUTION]
-> **免责声明**
-> 
-> 本项目仅供学习交流使用。如果因使用该项目造成的任何后果 (包括但不限于账号被禁用),作者和项目均不承担任何责任。请遵守相关网站和服务的使用条款 (ToS),并做好相关数据的备份工作。
-
----
-
-## 📋 更新日志
-
-查看完整的版本历史和更新内容, 请访问 [CHANGELOG.md](CHANGELOG.md)。
-
-### 🕰️ 历史版本说明
-
-本项目已从 Puppeteer 迁移至 Camoufox, 以应对日益复杂的反机器人检测机制。基于 Puppeteer 的旧版本代码已归档至 `puppeteer-edition` 分支, 仅作留存, **不再提供更新与维护**。
-
----
-
-**感谢 LMArena、Gemini 等网站提供 AI 服务!** 🎉
+[MIT](LICENSE)

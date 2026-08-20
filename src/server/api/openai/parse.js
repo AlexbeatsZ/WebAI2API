@@ -56,7 +56,6 @@ function parseError(code, customMessage) {
  * @param {string} options.backendName - 后端名称
  * @param {Function} options.getSupportedModels - 获取支持的模型列表函数
  * @param {Function} options.getImagePolicy - 获取图片策略函数
- * @param {Function} options.getModelType - 获取模型类型函数
  * @param {string} options.requestId - 请求 ID
  * @param {Function} options.logger - 日志函数
  * @returns {Promise<ParseResult>} 解析结果
@@ -68,7 +67,6 @@ export async function parseRequest(data, options) {
         backendName,
         getSupportedModels,
         getImagePolicy,
-        getModelType,
         requestId,
         logger
     } = options;
@@ -81,57 +79,22 @@ export async function parseRequest(data, options) {
         return parseError(ERROR_CODES.NO_MESSAGES);
     }
 
-    // 1. 解析模型参数与类型
-    let modelKey = null;
-    let isTextMode = false;
-
-    if (data.model) {
-        // 检查模型是否在支持列表中
-        const supportedModels = getSupportedModels();
-        const isSupported = supportedModels.data.some(m => m.id === data.model);
-
-        if (isSupported) {
-            modelKey = data.model;
-            logger.info('服务器', `触发模型: ${data.model}`, { id: requestId });
-
-            // 判定是否为文本模式
-            const type = getModelType ? getModelType(data.model) : 'image';
-            isTextMode = type === 'text';
-
-            if (isTextMode) {
-                logger.info('服务器', '解析模式: 文本对话 (虚拟上下文构建)', { id: requestId });
-            } else {
-                logger.info('服务器', '解析模式: 图像生成 (仅取最后一条)', { id: requestId });
-            }
-
-        } else {
-            return parseError(ERROR_CODES.INVALID_MODEL, `模型无效/后端 ${backendName} 不支持: ${data.model}`);
-        }
-    } else {
-        logger.info('服务器', '未指定模型，使用网页默认', { id: requestId });
+    if (!data.model) {
+        return parseError(ERROR_CODES.INVALID_MODEL, 'v4 请求必须提供规范模型 ID，例如 gemini-web/gemini-3.1-pro');
     }
-
-    // ============================================================
-    // 分支 A: 文本模型解析 (构建虚拟上下文)
-    // ============================================================
-    if (isTextMode) {
-        return await parseTextRequest(messages, tempDir, imageLimit, modelKey, isStreaming);
+    const supportedModels = getSupportedModels();
+    if (!supportedModels.data.some(model => model.id === data.model)) {
+        return parseError(ERROR_CODES.INVALID_MODEL, `模型无效/后端 ${backendName} 不支持: ${data.model}`);
     }
-
-    // ============================================================
-    // 分支 B: 生图模型解析 (原有逻辑)
-    // ============================================================
-    return await parseImageRequest(messages, tempDir, imageLimit, modelKey, isStreaming, getImagePolicy);
+    logger.info('服务器', `使用模型: ${data.model}`, { id: requestId });
+    return parseConversationRequest(messages, tempDir, imageLimit, data.model, isStreaming, getImagePolicy);
 }
 
 /**
  * 解析文本请求 (构建虚拟上下文)
  */
-async function parseTextRequest(messages, tempDir, imageLimit, modelId, isStreaming) {
-    let systemPrompt = '';
-    let historyPrompt = '';
-    let currentPrompt = '';
-
+async function parseConversationRequest(messages, tempDir, imageLimit, modelId, isStreaming, getImagePolicy) {
+    let systemInstruction = '';
     const imagePaths = [];
     let globalImageCount = 0;
 
@@ -172,60 +135,43 @@ async function parseTextRequest(messages, tempDir, imageLimit, modelId, isStream
         return textBuffer;
     }
 
-    // 1. 提取 System Prompt
-    const systemMsg = messages.find(m => m.role === 'system');
-    if (systemMsg) {
-        const content = await processContent(systemMsg.content);
-        if (content) {
-            systemPrompt = `=== 系统指令 (永远置顶) ===\n${content}\n\n`;
-        }
-    }
-
-    // 2. 区分历史和当前消息
-    // 找到最后一条 user 消息的索引
-    let lastUserIndex = -1;
-    for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === 'user') {
-            lastUserIndex = i;
-            break;
-        }
-    }
-
-    if (lastUserIndex === -1) {
+    if (!messages.some(message => message.role === 'user')) {
         return parseError(ERROR_CODES.NO_USER_MESSAGES);
     }
 
-    // 3. 构建历史对话 (不包含 system 和 最后一条 user)
-    const historyMessages = messages.filter((m, index) => {
-        return m.role !== 'system' && index < lastUserIndex;
-    });
-
-    if (historyMessages.length > 0) {
-        historyPrompt += `=== 历史对话 (滑动窗口或摘要) ===\n`;
-        for (const msg of historyMessages) {
-            const roleName = msg.role === 'user' ? 'User' : 'AI';
-            const content = await processContent(msg.content);
-            historyPrompt += `${roleName}: ${content}\n`;
+    const roleNames = {
+        system: 'System',
+        developer: 'Developer',
+        user: 'User',
+        assistant: 'Assistant',
+        tool: 'Tool'
+    };
+    const compiled = [];
+    for (const message of messages) {
+        const content = await processContent(message.content);
+        const role = roleNames[message.role] || String(message.role || 'Message');
+        compiled.push({ role: message.role, text: `${role}: ${content}` });
+        if (message.role === 'system' && content) {
+            systemInstruction += `${systemInstruction ? '\n\n' : ''}${content}`;
         }
-        historyPrompt += `\n`;
     }
 
-    // 4. 构建当前输入
-    const lastUserMsg = messages[lastUserIndex];
-    const currentContent = await processContent(lastUserMsg.content);
+    // 普通网站收到完整提示；支持原生 System Instructions 的网站使用
+    // conversationPrompt，避免把同一系统指令提交两次。
+    const finalPrompt = compiled.map(item => item.text).join('\n\n');
+    const conversationPrompt = compiled
+        .filter(item => item.role !== 'system')
+        .map(item => item.text)
+        .join('\n\n');
 
-    // 判断是否需要添加分割符号
-    const hasContext = systemPrompt || historyPrompt;
-    if (hasContext) {
-        // 有上下文，添加分割符
-        currentPrompt = `=== 当前输入 ===\nUser: ${currentContent}`;
-    } else {
-        // 没有上下文，直接使用内容
-        currentPrompt = currentContent;
+    const hasImage = imagePaths.length > 0;
+    const policy = getImagePolicy(modelId);
+    if (policy === IMAGE_POLICY.REQUIRED && !hasImage) {
+        return parseError(ERROR_CODES.IMAGE_REQUIRED, `模型 ${modelId} 需要参考图`);
     }
-
-    // 5. 合并最终 Prompt
-    const finalPrompt = systemPrompt + historyPrompt + currentPrompt;
+    if (policy === IMAGE_POLICY.FORBIDDEN && hasImage) {
+        return parseError(ERROR_CODES.IMAGE_FORBIDDEN, `模型 ${modelId} 不支持图片输入`);
+    }
 
     return {
         success: true,
@@ -234,7 +180,9 @@ async function parseTextRequest(messages, tempDir, imageLimit, modelId, isStream
             imagePaths,
             modelId,
             modelName: modelId,
-            isStreaming
+            isStreaming,
+            systemInstruction,
+            conversationPrompt
         }
     };
 }

@@ -19,8 +19,8 @@ import {
     saveBrowserConfig,
     getQueueConfig,
     saveQueueConfig,
-    getInstancesConfig,
-    saveInstancesConfig,
+    getBrowserProfilesConfig,
+    saveBrowserProfilesConfig,
     getAdaptersConfig,
     saveAdaptersConfig,
     getPoolConfig,
@@ -29,12 +29,12 @@ import {
 import {
     validateServerConfig,
     validateBrowserConfig,
-    validateInstancesConfig,
+    validateBrowserProfilesConfig,
     validatePoolConfig,
     validateAdaptersConfig
 } from '../../../config/validator.js';
 import { registry } from '../../../backend/registry.js';
-import { sendRestartSignal, sendStopSignal, isUnderSupervisor, getVncInfo } from '../../../utils/ipc.js';
+import { sendRestartSignal, isUnderSupervisor } from '../../../utils/ipc.js';
 import { getTodayStats, getStatsRange, clearStatsRange } from '../../../utils/stats.js';
 import {
     getList as getHistoryList,
@@ -73,7 +73,7 @@ async function readBody(req) {
  * @returns {Function} Admin 路由处理函数
  */
 export function createAdminRouter(context) {
-    const { config, queueManager, tempDir, getSafeMode } = context;
+    const { config, queueManager, tempDir, getSafeMode, getRuntimeManager } = context;
 
     /**
      * Admin 路由处理函数
@@ -91,7 +91,8 @@ export function createAdminRouter(context) {
             if (method === 'GET' && pathname === '/status') {
                 const status = getSystemStatus();
                 const safeMode = getSafeMode?.() || { enabled: false, reason: null };
-                sendJson(res, 200, { ...status, safeMode });
+                const runtime = getRuntimeManager?.()?.snapshot() || { profiles: [], slots: [], capacity: { healthy: 0, idle: 0, running: 0, total: 0 } };
+                sendJson(res, 200, { ...status, safeMode, runtime });
                 return;
             }
 
@@ -164,20 +165,34 @@ export function createAdminRouter(context) {
                 return;
             }
 
-            // GET /admin/vnc/status - VNC 状态
-            if (method === 'GET' && pathname === '/vnc/status') {
-                const vncInfo = await getVncInfo();
-                if (vncInfo) {
-                    sendJson(res, 200, vncInfo);
-                } else {
-                    // 非 Supervisor 模式或无法获取信息
-                    sendJson(res, 200, {
-                        enabled: false,
-                        port: 0,
-                        display: '',
-                        xvfbMode: false
-                    });
-                }
+            const vncStatusMatch = pathname.match(/^\/profiles\/([^/]+)\/vnc\/status$/);
+            if (method === 'GET' && vncStatusMatch) {
+                const info = getRuntimeManager?.()?.getVncInfo(decodeURIComponent(vncStatusMatch[1]));
+                sendJson(res, info ? 200 : 404, info || { enabled: false, display: '', port: 0, isolated: false });
+                return;
+            }
+
+            if (method === 'GET' && pathname === '/runtime/slots') {
+                sendJson(res, 200, getRuntimeManager?.()?.snapshot() || { profiles: [], slots: [], capacity: { healthy: 0, idle: 0, running: 0, total: 0 } });
+                return;
+            }
+
+            const restartProfileMatch = pathname.match(/^\/runtime\/profiles\/([^/]+)\/restart$/);
+            if (method === 'POST' && restartProfileMatch) {
+                const snapshot = await getRuntimeManager().restartProfile(decodeURIComponent(restartProfileMatch[1]));
+                sendJson(res, 200, { success: true, profile: snapshot });
+                return;
+            }
+
+            const refreshModelsMatch = pathname.match(/^\/sites\/([^/]+)\/models\/refresh$/);
+            if (method === 'POST' && refreshModelsMatch) {
+                const models = await getRuntimeManager().refreshModels(decodeURIComponent(refreshModelsMatch[1]));
+                sendJson(res, 200, { success: true, models });
+                return;
+            }
+
+            if (method === 'GET' && pathname === '/sites') {
+                sendJson(res, 200, getRuntimeManager?.()?.getSites() || []);
                 return;
             }
 
@@ -213,8 +228,8 @@ export function createAdminRouter(context) {
 
             // GET /admin/data-folders - 列出数据文件夹
             if (method === 'GET' && pathname === '/data-folders') {
-                const workers = config.backend?.pool?.workers || [];
-                const folders = getDataFolders(workers);
+                const profiles = config.browserProfiles.map(profile => ({ userDataDir: profile.resolvedUserDataDir }));
+                const folders = getDataFolders(profiles);
                 sendJson(res, 200, folders);
                 return;
             }
@@ -226,8 +241,8 @@ export function createAdminRouter(context) {
                     sendApiError(res, { code: ERROR_CODES.INVALID_REQUEST_BODY, message: '缺少 folders 数组' });
                     return;
                 }
-                const workers = config.backend?.pool?.workers || [];
-                const result = deleteDataFolders(body.folders, workers);
+                const profiles = config.browserProfiles.map(profile => ({ userDataDir: profile.resolvedUserDataDir }));
+                const result = deleteDataFolders(body.folders, profiles);
 
                 if (result.errors.length > 0) {
                     sendJson(res, 207, result); // 207 Multi-Status
@@ -301,25 +316,24 @@ export function createAdminRouter(context) {
                 return;
             }
 
-            // GET/POST /admin/config/instances (对应原设计的 workers)
+            // Legacy configuration endpoints are intentionally gone in v4.
             if (pathname === '/config/instances' || pathname === '/config/workers') {
-                if (method === 'GET') {
-                    sendJson(res, 200, getInstancesConfig());
-                } else if (method === 'POST') {
-                    const body = await readBody(req);
+                sendJson(res, 410, { error: { message: 'Instance/Worker 已由浏览器配置和并发页取代' } });
+                return;
+            }
 
-                    // 校验配置（包括 Instance/Worker 名称唯一性）
-                    const validation = validateInstancesConfig(body);
+            if (pathname === '/profiles') {
+                if (method === 'GET') {
+                    sendJson(res, 200, getBrowserProfilesConfig());
+                } else if (method === 'PUT') {
+                    const body = await readBody(req);
+                    const validation = validateBrowserProfilesConfig(body);
                     if (!validation.valid) {
-                        sendApiError(res, {
-                            code: ERROR_CODES.INVALID_REQUEST_BODY,
-                            message: `配置校验失败: ${validation.errors.join('; ')}`
-                        });
+                        sendApiError(res, { code: ERROR_CODES.INVALID_REQUEST_BODY, message: `配置校验失败: ${validation.errors.join('; ')}` });
                         return;
                     }
-
-                    saveInstancesConfig(body);
-                    sendJson(res, 200, { success: true, message: '配置已保存，请重启服务生效' });
+                    saveBrowserProfilesConfig(body);
+                    sendJson(res, 200, { success: true, message: '连接设置已保存，重启后生效' });
                 } else {
                     res.writeHead(405);
                     res.end();
@@ -411,13 +425,13 @@ export function createAdminRouter(context) {
 
             // GET /admin/stats - 基本统计（包含今日成功/失败）
             if (method === 'GET' && pathname === '/stats') {
-                const instances = config.backend?.pool?.instances || [];
-                const workers = config.backend?.pool?.workers || [];
                 const todayStats = getTodayStats();
+                const runtime = getRuntimeManager?.()?.snapshot();
 
                 sendJson(res, 200, {
-                    instances: instances.length,
-                    workers: workers.length,
+                    profiles: runtime?.profiles.length || 0,
+                    slots: runtime?.capacity.total || 0,
+                    activeSlots: runtime?.capacity.healthy || 0,
                     success: todayStats.success,
                     failed: todayStats.failed
                 });

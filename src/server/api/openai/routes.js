@@ -122,7 +122,7 @@ export function createOpenAIRouter(context) {
                 return;
             }
 
-            const { prompt, imagePaths, modelId, modelName } = parseResult.data;
+            const { prompt, imagePaths, modelId, modelName, systemInstruction, conversationPrompt } = parseResult.data;
             const reasoning = data.reasoning === true;
 
             logger.info('服务器', `[队列] 请求入队: ${prompt.slice(0, 100)}...`, { id: requestId, images: imagePaths.length });
@@ -137,7 +137,9 @@ export function createOpenAIRouter(context) {
                 modelName,
                 id: requestId,
                 isStreaming,
-                reasoning
+                reasoning,
+                systemInstruction,
+                conversationPrompt
             });
 
         } catch (err) {

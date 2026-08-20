@@ -19,9 +19,9 @@ import { getRealViewport, clamp, random, sleep } from './utils.js';
 import { logger } from '../../utils/logger.js';
 import { getBrowserProxy, cleanupProxy } from '../../utils/proxy.js';
 
-// 全局状态：用于在登录模式下管理残留进程与复用上下文
-let globalBrowserProcess = null;
-let globalContext = null; // 替代 globalBrowser
+// Every BrowserProfile owns its context. The launcher only tracks resources so
+// process-level shutdown can close all profiles without confusing ownership.
+const activeContexts = new Set();
 
 /**
  * 清理浏览器资源和进程
@@ -29,50 +29,16 @@ let globalContext = null; // 替代 globalBrowser
  * @returns {Promise<void>}
  */
 export async function cleanup() {
-
-    // Level 1: 通过 Playwright 协议优雅关闭 Context，保存 Profile
-    if (globalContext) {
+    for (const context of [...activeContexts]) {
         try {
             logger.debug('浏览器', '正在断开远程调试连接并保存 Profile...');
-            await globalContext.close();
-            globalContext = null;
-            logger.debug('浏览器', '已关闭浏览器上下文');
+            await context.close();
         } catch (e) {
             logger.warn('浏览器', `关闭上下文失败: ${e.message}`);
+        } finally {
+            activeContexts.delete(context);
         }
     }
-
-    // Level 2 & 3: 处理残留进程 (主要用于登录模式)
-    if (globalBrowserProcess && !globalBrowserProcess.killed) {
-        logger.info('浏览器', '正在终止浏览器进程...');
-        try {
-            // Level 2: 发送 SIGTERM (软杀)
-            globalBrowserProcess.kill('SIGTERM');
-
-            // 等待进程退出
-            const start = Date.now();
-            while (Date.now() - start < 2000) {
-                try {
-                    process.kill(globalBrowserProcess.pid, 0);
-                    await new Promise(r => setTimeout(r, 200));
-                } catch (e) {
-                    break;
-                }
-            }
-        } catch (e) { }
-
-        // Level 3: 强制查杀 (SIGKILL)
-        try {
-            process.kill(globalBrowserProcess.pid, 0);
-            logger.debug('浏览器', '浏览器进程无响应，执行强制终止 (SIGKILL)...');
-            process.kill(-globalBrowserProcess.pid, 'SIGKILL');
-        } catch (e) { }
-
-        globalBrowserProcess = null;
-        logger.info('浏览器', '浏览器进程已终止');
-    }
-
-    // 清理代理
     await cleanupProxy();
 }
 
@@ -85,10 +51,6 @@ let signalHandlersRegistered = false;
  */
 function registerCleanupHandlers() {
     if (signalHandlersRegistered) return;
-
-    process.on('exit', () => {
-        if (globalBrowserProcess) globalBrowserProcess.kill();
-    });
 
     process.on('SIGINT', async () => {
         await cleanup();
@@ -253,12 +215,14 @@ async function getPersistentFingerprint(filePath) {
 export async function initBrowserBase(config, options = {}) {
     const {
         userDataDir,
+        profileId = null,
         instanceName = null,
-        proxyConfig = null
+        proxyConfig = null,
+        virtualDisplay = null
     } = options;
 
     // 日志标识 (优先使用实例名称)
-    const markLabel = instanceName || '默认';
+    const markLabel = profileId || instanceName || '默认';
 
     // 检测登录模式和 Xvfb 模式
     const isLoginMode = process.argv.some(arg => arg.startsWith('-login'));
@@ -296,6 +260,7 @@ export async function initBrowserBase(config, options = {}) {
         exclude_addons: ['UBO'],
         geoip: true,
         humanize: browserConfig.humanizeCursor === 'camou',
+        virtual_display: virtualDisplay || undefined,
         config: {
             forceScopeAccess: true,
             // Canvas 抗指纹：注入固定噪点偏移
@@ -321,7 +286,7 @@ export async function initBrowserBase(config, options = {}) {
 
     // 启动 Camoufox
     const context = await Camoufox(camoufoxLaunchOptions);
-    globalContext = context;
+    activeContexts.add(context);
 
     // 构建状态描述
     const statusParts = [];
@@ -335,9 +300,7 @@ export async function initBrowserBase(config, options = {}) {
     // 注册断开连接事件（不再自动退出进程，由 Worker 决定后续行为）
     context.on('close', async () => {
         logger.warn('浏览器', `[${markLabel}] 浏览器已断开连接`);
-        // 清理全局状态，但不退出进程
-        globalContext = null;
-        globalBrowserProcess = null;
+        activeContexts.delete(context);
     });
 
     // 获取或创建 Page
@@ -426,7 +389,11 @@ export async function initBrowserBase(config, options = {}) {
     // 返回 context 和 page（导航、预热、cursor 初始化由工作池负责）
     return {
         context,
-        page
+        page,
+        close: async () => {
+            if (activeContexts.has(context)) await context.close();
+            activeContexts.delete(context);
+        }
     };
 }
 

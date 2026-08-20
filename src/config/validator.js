@@ -4,6 +4,42 @@
  */
 
 import { registry } from '../backend/registry.js';
+import { getSiteDefinition } from '../backend/sites/catalog.js';
+
+export function validateBrowserProfilesConfig(data) {
+    const errors = [];
+    if (!Array.isArray(data) || data.length === 0) return { valid: false, errors: ['至少需要一个浏览器配置'] };
+    const ids = new Set();
+    const directories = new Set();
+    data.forEach((profile, profileIndex) => {
+        const prefix = `browserProfiles[${profileIndex}]`;
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(profile?.id || '')) errors.push(`${prefix}.id 只能使用小写字母、数字和连字符`);
+        if (ids.has(profile?.id)) errors.push(`${prefix}.id 重复`);
+        ids.add(profile?.id);
+        if (!profile?.userDataDir || typeof profile.userDataDir !== 'string') errors.push(`${prefix}.userDataDir 不能为空`);
+        const directoryKey = String(profile?.userDataDir || '').toLowerCase();
+        if (directories.has(directoryKey)) errors.push(`${prefix}.userDataDir 不能与其他浏览器配置共享`);
+        directories.add(directoryKey);
+        if (!Array.isArray(profile?.sites) || profile.sites.length === 0) {
+            errors.push(`${prefix}.sites 至少需要一个网站`);
+        } else {
+            const sites = new Set();
+            profile.sites.forEach((site, siteIndex) => {
+                const sitePrefix = `${prefix}.sites[${siteIndex}]`;
+                if (!getSiteDefinition(site?.id)) errors.push(`${sitePrefix}.id 未知: ${site?.id || ''}`);
+                if (sites.has(site?.id)) errors.push(`${sitePrefix}.id 重复`);
+                sites.add(site?.id);
+                if (!Number.isInteger(site?.pages) || site.pages < 1 || site.pages > 16) errors.push(`${sitePrefix}.pages 必须为 1-16`);
+            });
+        }
+        if (profile?.proxy?.enabled) {
+            if (!['http', 'socks5'].includes(profile.proxy.type)) errors.push(`${prefix}.proxy.type 必须为 http 或 socks5`);
+            if (!profile.proxy.host) errors.push(`${prefix}.proxy.host 不能为空`);
+            if (!Number.isInteger(profile.proxy.port) || profile.proxy.port < 1 || profile.proxy.port > 65535) errors.push(`${prefix}.proxy.port 无效`);
+        }
+    });
+    return { valid: errors.length === 0, errors };
+}
 
 /**
  * 校验 Server 配置
@@ -51,6 +87,22 @@ export function validateServerConfig(data) {
             errors.push('queueBuffer 必须是整数');
         } else if (data.queueBuffer < 0) {
             errors.push('queueBuffer 不能为负数');
+        }
+    }
+
+    if (data.requestTimeoutMs !== undefined) {
+        if (typeof data.requestTimeoutMs !== 'number' || !Number.isInteger(data.requestTimeoutMs)) {
+            errors.push('requestTimeoutMs 必须是整数');
+        } else if (data.requestTimeoutMs < 1000 || data.requestTimeoutMs > 600000) {
+            errors.push('requestTimeoutMs 必须在 1000-600000 范围内');
+        }
+    }
+
+    if (data.maxRetries !== undefined) {
+        if (typeof data.maxRetries !== 'number' || !Number.isInteger(data.maxRetries)) {
+            errors.push('maxRetries 必须是整数');
+        } else if (data.maxRetries < 0 || data.maxRetries > 10) {
+            errors.push('maxRetries 必须在 0-10 范围内');
         }
     }
 

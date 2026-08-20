@@ -16,6 +16,7 @@ import {
     waitApiResponse
 } from '../utils/index.js';
 import { logger } from '../../utils/logger.js';
+import crypto from 'crypto';
 
 // --- 配置常量 ---
 const TARGET_URL = 'https://gemini.google.com/app?hl=en';
@@ -53,6 +54,88 @@ async function clickGeminiSend(page, inputLocator, sendBtnLocator, meta = {}) {
     await page.keyboard.press('Enter');
 }
 
+async function findMenuItem(locator, patterns) {
+    for (let index = 0; index < patterns.length; index++) {
+        const item = locator.filter({ hasText: patterns[index] }).first();
+        if (await item.count().catch(() => 0)) return { item, patternIndex: index };
+    }
+    return null;
+}
+
+async function selectGeminiModel(page, modelId, meta = {}) {
+    const modePickerBtn = page.getByRole('button', { name: /Open mode picker|mode|model/i }).first();
+    if (!await modePickerBtn.count().catch(() => 0)) {
+        return { error: '找不到 Gemini 模型选择器', code: 'model_unavailable', retryable: false };
+    }
+    await safeClick(page, modePickerBtn, { bias: 'button' });
+    await sleep(300, 500);
+    const menuItems = page.getByRole('menuitem');
+    if (!await menuItems.count().catch(() => 0)) {
+        return { error: 'Gemini 没有显示可用模型', code: 'model_unavailable', retryable: false };
+    }
+
+    const pro = /^\s*(?:\d+(?:\.\d+)*\s+)?Pro\b/i;
+    const flash = /^\s*(?:\d+(?:\.\d+)*\s+)?Flash(?!-Lite)\b/i;
+    const extended = /^\s*Extended thinking\b/i;
+    const thinking = /^\s*Thinking\b/i;
+    const fast = /^\s*Fast\b/i;
+    const patterns = modelId === 'gemini-3.1-pro'
+        ? [pro, extended, thinking]
+        : modelId === 'gemini-3.1-flash-thinking'
+            ? [extended, thinking]
+            : modelId === 'gemini-3.1-flash'
+                ? [flash, fast]
+                : [new RegExp(meta.modelLabel?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') || '^$', 'i')];
+    const target = await findMenuItem(menuItems, patterns);
+    if (!target) {
+        await page.keyboard.press('Escape').catch(() => {});
+        return { error: `Gemini 中没有可用模型: ${modelId}`, code: 'model_unavailable', retryable: false };
+    }
+    const selectedText = (await target.item.textContent() || '').trim();
+    await safeClick(page, target.item, { bias: 'button' });
+    logger.info('适配器', `已选择 Gemini 模式: ${selectedText}`, meta);
+
+    if (modelId === 'gemini-3.1-pro' && target.patternIndex === 0) {
+        await safeClick(page, modePickerBtn, { bias: 'button' });
+        await sleep(300, 500);
+        const extendedTarget = await findMenuItem(page.getByRole('menuitem'), [extended, thinking]);
+        if (!extendedTarget) {
+            await page.keyboard.press('Escape').catch(() => {});
+            return { error: 'Gemini Pro 当前没有 Extended thinking', code: 'model_unavailable', retryable: false };
+        }
+        const extendedText = (await extendedTarget.item.textContent() || '').trim();
+        await safeClick(page, extendedTarget.item, { bias: 'button' });
+        logger.info('适配器', `已开启 Gemini 扩展思考: ${extendedText}`, meta);
+    }
+    return null;
+}
+
+async function discoverModels(page) {
+    const picker = page.getByRole('button', { name: /Open mode picker|mode|model/i }).first();
+    if (!await picker.count().catch(() => 0)) return [];
+    await picker.click();
+    const labels = await page.getByRole('menuitem').allTextContents();
+    await page.keyboard.press('Escape').catch(() => {});
+    const models = [];
+    if (labels.some(label => /(?:\d+(?:\.\d+)*\s+)?Pro\b/i.test(label))) {
+        models.push({ id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', imagePolicy: 'optional', type: 'text', capabilities: { input: ['text', 'image'], output: ['text'], reasoning: true } });
+    }
+    if (labels.some(label => /Flash|Fast/i.test(label))) {
+        models.push({ id: 'gemini-3.1-flash', label: 'Gemini 3.1 Flash', imagePolicy: 'optional', type: 'text', capabilities: { input: ['text', 'image'], output: ['text'], reasoning: false } });
+    }
+    if (labels.some(label => /Extended thinking|Thinking/i.test(label))) {
+        models.push({ id: 'gemini-3.1-flash-thinking', label: 'Gemini 3.1 Flash Thinking', imagePolicy: 'optional', type: 'text', capabilities: { input: ['text', 'image'], output: ['text'], reasoning: true } });
+    }
+    for (const rawLabel of labels) {
+        const label = rawLabel.replace(/\s+/g, ' ').trim();
+        if (!label || /^(Fast|Thinking|Extended thinking)$/i.test(label) || /(?:\d+(?:\.\d+)*\s+)?(?:Pro|Flash)\b/i.test(label)) continue;
+        const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'model';
+        const hash = crypto.createHash('sha1').update(label.toLowerCase()).digest('hex').slice(0, 8);
+        models.push({ id: `ui-${slug}-${hash}`, label, imagePolicy: 'optional', type: 'text', capabilities: { input: ['text', 'image'], output: ['text'], reasoning: /thinking|reasoning|pro/i.test(label) } });
+    }
+    return models;
+}
+
 /**
  * 执行文本生成任务
  * @param {object} context - 浏览器上下文 { page, config }
@@ -64,7 +147,7 @@ async function clickGeminiSend(page, inputLocator, sendBtnLocator, meta = {}) {
  */
 async function generate(context, prompt, imgPaths, modelId, meta = {}) {
     const { page, config } = context;
-    const waitTimeout = config?.backend?.pool?.waitTimeout ?? 120000;
+    const waitTimeout = meta.requestTimeoutMs || config?.backend?.pool?.waitTimeout || 120000;
     const inputLocator = page.getByRole('textbox');
     const sendBtnLocator = page.getByRole('button', { name: 'Send message' });
 
@@ -110,75 +193,9 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         await safeClick(page, inputLocator, { bias: 'input' });
         await humanType(page, inputLocator, prompt);
 
-        // 4. 选择模型
-        if (modelId) {
-            try {
-                logger.debug('适配器', `准备选择模型: ${modelId}`, meta);
-
-                // 点击打开模型选择菜单
-                const modePickerBtn = page.getByRole('button', { name: 'Open mode picker' });
-                await safeClick(page, modePickerBtn, { bias: 'button' });
-                await sleep(300, 500);
-
-                // 获取所有 menuitem 选项的文本
-                const menuItemsLocator = page.getByRole('menuitem');
-                const menuItemsCount = await menuItemsLocator.count();
-
-                if (menuItemsCount === 0) {
-                    logger.warn('适配器', '未找到模型选项，使用默认模型', meta);
-                } else {
-                    // 获取所有选项的文本（去除前后空白）
-                    const itemTexts = await menuItemsLocator.allTextContents();
-
-                    logger.debug('适配器', `可用模型选项: [${itemTexts.map(t => t.trim()).join('], [')}]`, meta);
-
-                    // 判断是否有 Pro 选项
-                    const hasPro = itemTexts.some(text => text.trim().startsWith('Pro'));
-
-                    // 确定要选择的目标选项文本前缀
-                    let targetPrefix = null;
-
-                    if (hasPro) {
-                        // 有 Pro 选项的情况
-                        if (modelId === 'gemini-3.1-pro') {
-                            targetPrefix = 'Pro';
-                        } else if (modelId === 'gemini-3.1-flash-thinking') {
-                            targetPrefix = 'Thinking';
-                        } else {
-                            targetPrefix = 'Fast';
-                        }
-                    } else {
-                        // 没有 Pro 选项的情况
-                        if (modelId === 'gemini-3.1-pro' || modelId === 'gemini-3.1-flash-thinking') {
-                            targetPrefix = 'Thinking';
-                        } else {
-                            targetPrefix = 'Fast';
-                        }
-                    }
-
-                    logger.debug('适配器', `目标模型前缀: "${targetPrefix}"`, meta);
-
-                    // 使用 locator 直接定位目标选项（避免缓存元素引用导致 detached 错误）
-                    const targetItem = menuItemsLocator.filter({ hasText: new RegExp(`^\\s*${targetPrefix}`) }).first();
-
-                    if (await targetItem.count() > 0) {
-                        const selectedText = (await targetItem.textContent() || '').trim();
-                        await safeClick(page, targetItem, { bias: 'button' });
-                        logger.info('适配器', `已选择模型: "${selectedText}"`, meta);
-                    } else {
-                        logger.warn('适配器', `未找到匹配的模型选项 (${targetPrefix})，使用默认模型`, meta);
-                        // 按 Escape 关闭菜单
-                        await page.keyboard.press('Escape');
-                    }
-                }
-            } catch (e) {
-                logger.warn('适配器', `模型选择失败: ${e.message}，继续使用默认模型`, meta);
-                // 尝试关闭可能打开的菜单
-                try {
-                    await page.keyboard.press('Escape');
-                } catch { }
-            }
-        }
+        // 4. 选择模型。找不到时返回明确错误，不使用网页默认模型。
+        const modelError = await selectGeminiModel(page, modelId, meta);
+        if (modelError) return modelError;
 
         // 5. 先启动 API 监听
         logger.debug('适配器', '启动 API 监听...', meta);
@@ -258,12 +275,13 @@ export const manifest = {
     },
 
     models: [
-        { id: 'gemini-3.1-flash', imagePolicy: 'optional', type: 'text' },
-        { id: 'gemini-3.1-flash-thinking', imagePolicy: 'optional', type: 'text' },
-        { id: 'gemini-3.1-pro', imagePolicy: 'optional', type: 'text' }
+        { id: 'gemini-3.1-flash', imagePolicy: 'optional', type: 'text', capabilities: { input: ['text', 'image'], output: ['text'], reasoning: false } },
+        { id: 'gemini-3.1-flash-thinking', imagePolicy: 'optional', type: 'text', capabilities: { input: ['text', 'image'], output: ['text'], reasoning: true } },
+        { id: 'gemini-3.1-pro', imagePolicy: 'optional', type: 'text', capabilities: { input: ['text', 'image'], output: ['text'], reasoning: true } }
     ],
 
     navigationHandlers: [],
+    discoverModels,
 
     generate
 };

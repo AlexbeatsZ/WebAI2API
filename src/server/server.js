@@ -50,7 +50,8 @@ const {
     TEMP_DIR,
     getModels,
     getImagePolicy,
-    getModelType
+    getModelType,
+    getRuntimeManager
 } = backend;
 
 /** @type {number} 服务器端口 */
@@ -123,7 +124,8 @@ const handleRequest = createGlobalRouter({
     queueManager,
     config,
     loginMode: isLoginMode,
-    getSafeMode: () => ({ enabled: safeMode, reason: safeModeReason })
+    getSafeMode: () => ({ enabled: safeMode, reason: safeModeReason }),
+    getRuntimeManager
 });
 
 // ==================== 启动服务器 ====================
@@ -167,10 +169,10 @@ async function startServer() {
     server.on('upgrade', async (req, socket, head) => {
         const url = new URL(req.url, `http://${req.headers.host}`);
 
-        // 只处理 /admin/vnc 路径
-        if (url.pathname === '/admin/vnc') {
+        const vncMatch = url.pathname.match(/^\/admin\/profiles\/([^/]+)\/vnc$/);
+        if (vncMatch) {
             const { handleVncUpgrade } = await import('./api/admin/vncProxy.js');
-            await handleVncUpgrade(req, socket, head, AUTH_TOKEN);
+            await handleVncUpgrade(req, socket, head, AUTH_TOKEN, getRuntimeManager, decodeURIComponent(vncMatch[1]));
         } else {
             socket.destroy();
         }

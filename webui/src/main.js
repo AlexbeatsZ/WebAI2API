@@ -1,20 +1,17 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import Antd from 'ant-design-vue';
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
 import 'ant-design-vue/dist/reset.css';
+import './styles.css';
 
 const routes = [
-    { path: '/', component: () => import('@/components/dash.vue') },
-    { path: '/settings/server', component: () => import('@/components/settings/server.vue') },
-    { path: '/settings/workers', component: () => import('@/components/settings/workers.vue') },
-    { path: '/settings/browser', component: () => import('@/components/settings/browser.vue') },
-    { path: '/settings/adapters', component: () => import('@/components/settings/adapters.vue') },
-    { path: '/tools/display', component: () => import('@/components/tools/display.vue') },
-    { path: '/tools/cache', component: () => import('@/components/tools/cache.vue') },
-    { path: '/tools/logs', component: () => import('@/components/tools/logs.vue') },
-    { path: '/tools/request', component: () => import('@/components/tools/request.vue') },
+    { path: '/', component: () => import('@/components/v4/Overview.vue') },
+    { path: '/connections', component: () => import('@/components/v4/Connections.vue') },
+    { path: '/requests', component: () => import('@/components/v4/Requests.vue') },
+    { path: '/browser', component: () => import('@/components/v4/LiveBrowser.vue') },
+    { path: '/settings', component: () => import('@/components/v4/Settings.vue') },
+    { path: '/:pathMatch(.*)*', redirect: '/' }
 ];
 
 const router = createRouter({
@@ -26,5 +23,4 @@ const pinia = createPinia()
 const app = createApp(App);
 app.use(pinia)
 app.use(router)
-app.use(Antd)
 app.mount('#app')

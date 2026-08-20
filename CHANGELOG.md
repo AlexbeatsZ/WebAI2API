@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-08-21
+
+### Added
+
+- Browser profiles with isolated processes, login directories, proxies, virtual displays, and VNC sessions.
+- Atomic page-slot scheduling, cross-slot retry, slot recovery, and profile-scoped restart.
+- AI Studio Chat Playground support for system instructions, conversation history, image attachments, model discovery, and result extraction.
+- Canonical site-qualified model IDs with capability and availability metadata.
+- A dark operations console for connections, requests, live browsers, health, and settings.
+- Explicit v3-to-v4 migration with dry-run and non-overwriting write modes.
+
+### Changed
+
+- Text, image, and video are model capabilities rather than separate product modes.
+- Gemini and ChatGPT variants are presented as one website each.
+- v4 rejects legacy Instance/Worker configuration and requests without a canonical model ID.
+
 ## [3.6.7] - 2026-04-24
 
 ### 🐛 Fixed

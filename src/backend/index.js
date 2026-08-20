@@ -1,6 +1,6 @@
 /**
  * @fileoverview 后端适配器入口
- * @description 基于 Pool 架构统一管理多浏览器实例，提供统一的对外接口。
+ * @description 基于 BrowserProfile + PageSlot 运行时管理浏览器连接。
  *
  * 对外统一能力：
  * - `initBrowser(cfg)` → 初始化 Pool
@@ -12,7 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { loadConfig } from '../config/index.js';
-import { PoolManager } from './pool/index.js';
+import { RuntimeManager } from './runtime/RuntimeManager.js';
 import { logger } from '../utils/logger.js';
 
 // --- 集中管理的路径常量 ---
@@ -23,8 +23,7 @@ if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
-// 全局 PoolManager 实例
-let poolManager = null;
+let runtimeManager = null;
 
 /**
  * 获取后端接口
@@ -49,14 +48,14 @@ export function getBackend() {
          * @returns {Promise<{poolManager: PoolManager, config: object}>}
          */
         initBrowser: async (cfg) => {
-            if (poolManager && poolManager.initialized) {
-                return { poolManager, config: cfg };
+            if (runtimeManager && runtimeManager.initialized) {
+                return { poolManager: runtimeManager, runtimeManager, config: cfg };
             }
 
-            poolManager = new PoolManager(cfg);
-            await poolManager.initAll();
+            runtimeManager = new RuntimeManager(cfg);
+            await runtimeManager.initAll();
 
-            return { poolManager, config: cfg };
+            return { poolManager: runtimeManager, runtimeManager, config: cfg };
         },
 
         /**
@@ -68,10 +67,10 @@ export function getBackend() {
          * @param {object} meta - 元信息
          */
         generate: async (ctx, prompt, paths, modelId, meta) => {
-            if (!poolManager) {
-                return { error: 'Pool 未初始化' };
+            if (!runtimeManager) {
+                return { error: '浏览器运行时未初始化' };
             }
-            return await poolManager.generate(ctx, prompt, paths, modelId, meta);
+            return await runtimeManager.generate(ctx, prompt, paths, modelId, meta);
         },
 
         /**
@@ -79,10 +78,10 @@ export function getBackend() {
          * @returns {object}
          */
         getModels: () => {
-            if (!poolManager) {
+            if (!runtimeManager) {
                 return { object: 'list', data: [] };
             }
-            return poolManager.getModels();
+            return runtimeManager.getModels();
         },
 
         /**
@@ -91,10 +90,10 @@ export function getBackend() {
          * @returns {string}
          */
         getImagePolicy: (modelKey) => {
-            if (!poolManager) {
+            if (!runtimeManager) {
                 return 'optional';
             }
-            return poolManager.getImagePolicy(modelKey);
+            return runtimeManager.getImagePolicy(modelKey);
         },
 
         /**
@@ -103,10 +102,10 @@ export function getBackend() {
          * @returns {string} 'text' | 'image'
          */
         getModelType: (modelKey) => {
-            if (!poolManager) {
-                return 'image';
+            if (!runtimeManager) {
+                return 'conversation';
             }
-            return poolManager.getModelType(modelKey);
+            return runtimeManager.getModelType(modelKey);
         },
 
         /**
@@ -116,25 +115,24 @@ export function getBackend() {
          * @returns {Promise<{worker: string, cookies: object[]}>}
          */
         getCookies: async (workerName, domain) => {
-            if (!poolManager) {
-                throw new Error('Pool 未初始化');
+            if (!runtimeManager) {
+                throw new Error('浏览器运行时未初始化');
             }
-            return await poolManager.getCookies(workerName, domain);
+            return await runtimeManager.getCookies(workerName, domain);
         },
 
         /**
          * 触发监控导航（空闲时）
          */
         navigateToMonitor: async () => {
-            if (poolManager) {
-                await poolManager.navigateToMonitor();
-            }
+            return;
         },
 
         /**
          * 获取 PoolManager 实例
          * @returns {PoolManager|null}
          */
-        getPoolManager: () => poolManager
+        getPoolManager: () => runtimeManager,
+        getRuntimeManager: () => runtimeManager
     };
 }

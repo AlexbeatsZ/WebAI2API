@@ -1,0 +1,8 @@
+.git
+.github
+.agents
+node_modules
+webui/node_modules
+data
+camoufox
+*.log
