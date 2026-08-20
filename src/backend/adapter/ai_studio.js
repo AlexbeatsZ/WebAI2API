@@ -158,7 +158,10 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         if (blocked) return { ...blocked, retryable: false };
 
         const modelError = await selectModel(page, modelId, meta);
-        if (modelError) return modelError;
+        if (modelError) {
+            const redirected = await detectBlockedState(page);
+            return redirected ? { ...redirected, retryable: false } : modelError;
+        }
         await setSystemInstruction(page, meta.systemInstruction || '');
 
         if (imgPaths?.length) {

@@ -5,17 +5,17 @@ Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation ga
 # Current State
 
 - Repository: `AlexbeatsZ/WebAI2API`, branch `codex/webai2api-v4`, based on upstream `beac6c9`.
-- Production is on commit `8dac289` at immutable image digest `sha256:3b8013ae7cd5f84d6821dbfa930c6f9fe964bfcbe819be9cbc9c0ed2e3526240` with strict v4 configuration. The pre-v4 rollback image is `sha256:c8b3ee330c7627d95a740f51f8119a9f16b3bcc93eb189a44bfbf6dbb6a74d20`; the verified full backup is `C:\Users\Meta\Project\Scripts\Docker\web2api-backups\pre-v4-20260821-030648` on the server.
+- Production is on commit `f96407d` at immutable image digest `sha256:d2d99373b429a67bb5e3022d74f66206a6ffde9745c4145d60aaa9ac75e32df6` with strict v4 configuration. The pre-v4 rollback image is `sha256:c8b3ee330c7627d95a740f51f8119a9f16b3bcc93eb189a44bfbf6dbb6a74d20`; the verified full backup is `C:\Users\Meta\Project\Scripts\Docker\web2api-backups\pre-v4-20260821-030648` on the server.
 - v4 intentionally rejects legacy `backend.pool.instances/workers` configuration after the migration tool has produced `version: 4` configuration.
 - Persistent browser profile directories must never be deleted or shared by two browser processes.
 - The v4 runtime, canonical API, AI Studio/Gemini drivers, migration command, profile-scoped VNC, operations console, Docker/CI files, and automated tests are implemented and pushed.
 - Stable maintenance surfaces include public sanitized readiness, authenticated diagnostics, exact profile/site checks and probes, model refresh, profile restart, and profile-scoped VNC.
 - Automated tests pass, CI publishes immutable images, and the built console has been exercised at 1440x900 and 390x844. The local Docker daemon cannot currently reach Debian package mirrors, so CI and the production host remain the image-build gates.
-- Current live acceptance findings: on port 7897 both Gemini and AI Studio are explicitly region-blocked, while ChatGPT generates the correct DOM response but its current network endpoint no longer matches the legacy SSE observer. The local pending driver fix classifies Google region blocks and races ChatGPT network extraction against a stable DOM observer. Port 17897 is not active in the server's current mihomo process and must not be selected until it is reachable from the container.
+- Current live acceptance findings: ChatGPT's exact probe returns the expected API result in about 17 seconds using the stable DOM observer. On port 7897 Gemini explicitly returns `region_unavailable`; AI Studio is also redirected to Google's available-regions page, with a local pending fix to reclassify a redirect that completes while model selection starts. Port 17897 is not active in the server's current mihomo process and must not be selected until it is reachable from the container.
 
 # Active Work
 
-- Publish and deploy the Google block classification and ChatGPT DOM observer, then rerun exact probes.
+- Publish and deploy the delayed AI Studio redirect classification, then rerun its exact probe.
 - Keep production on port 7897 until the isolated 17897 listener is active and container-reachable.
 - Complete live Gemini, AI Studio, ChatGPT, four-way concurrency, per-profile VNC, restart-isolation, desktop, and narrow-screen acceptance.
 - Use `7897` for non-Google traffic. Only move the isolated profile containing Gemini and AI Studio to `17897` after the listener is active and container-reachable; never change host, Docker, ChatGPT, or global proxy settings.
