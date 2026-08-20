@@ -71,7 +71,7 @@ async function selectModel(page, modelId, meta) {
         page.locator('button').filter({ hasText: /Gemini\s+[0-9]/i })
     ]);
     if (!button) return { error: '找不到 AI Studio 模型选择器', code: 'model_unavailable', retryable: false };
-    await button.click();
+    await button.click({ timeout: 5000 });
     const options = page.getByRole('option').or(page.getByRole('menuitem')).or(page.getByRole('radio'));
     const expected = meta.modelLabel || config?.codeName || modelId.replace(/^gemini-/, '').replaceAll('-', ' ');
     const target = options.filter({ hasText: new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }).first();
@@ -79,7 +79,7 @@ async function selectModel(page, modelId, meta) {
         await page.keyboard.press('Escape').catch(() => {});
         return { error: `AI Studio 中没有可用模型: ${modelId}`, code: 'model_unavailable', retryable: false };
     }
-    await target.click();
+    await target.click({ timeout: 5000 });
     logger.info('AI Studio', `已选择模型 ${modelId}`, meta);
     return null;
 }
