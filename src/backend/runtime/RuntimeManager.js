@@ -2,6 +2,14 @@ import { BrowserProfile } from './BrowserProfile.js';
 import { SLOT_STATES } from './PageSlot.js';
 import { siteRegistry } from '../sites/SiteRegistry.js';
 import { logger } from '../../utils/logger.js';
+import crypto from 'crypto';
+
+function runtimeError(message, code, status) {
+    const error = new Error(message);
+    error.code = code;
+    error.status = status;
+    return error;
+}
 
 export class RuntimeManager {
     constructor(config, options = {}) {
@@ -77,6 +85,21 @@ export class RuntimeManager {
         return null;
     }
 
+    async acquireFrom(slots, taskId, deadline) {
+        if (slots.length === 0) return null;
+        while (Date.now() < deadline) {
+            const idle = slots
+                .filter(slot => slot.state === SLOT_STATES.IDLE)
+                .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+            for (const slot of idle) {
+                const token = slot.tryReserve(taskId);
+                if (token) return { slot, token };
+            }
+            await this.waitForAvailability(deadline - Date.now());
+        }
+        return null;
+    }
+
     async generate(ctx, prompt, paths, modelId, meta = {}) {
         if (!this.siteRegistry.resolveModel(modelId)) {
             return { error: `模型不可用: ${modelId}`, code: 'model_unavailable', retryable: false };
@@ -135,6 +158,81 @@ export class RuntimeManager {
                 running: slots.filter(slot => slot.state === SLOT_STATES.RUNNING || slot.state === SLOT_STATES.RESERVED).length,
                 total: slots.length
             }
+        };
+    }
+
+    getProfileSiteSlots(profileId, siteId, modelId = null) {
+        const profile = this.profiles.find(item => item.id === profileId);
+        if (!profile) throw runtimeError(`浏览器配置不存在: ${profileId}`, 'profile_not_found', 404);
+        if (!profile.config.sites.some(site => site.id === siteId)) {
+            throw runtimeError(`浏览器配置 ${profileId} 未启用网站: ${siteId}`, 'site_not_configured', 404);
+        }
+        const slots = profile.slots.filter(slot => slot.siteId === siteId && (!modelId || slot.supports(modelId)));
+        if (modelId && slots.length === 0) {
+            throw runtimeError(`网站 ${siteId} 不支持模型: ${modelId}`, 'model_unavailable', 404);
+        }
+        return slots;
+    }
+
+    async inspectSite(profileId, siteId, timeoutMs = 10000) {
+        const slots = this.getProfileSiteSlots(profileId, siteId);
+        const taskId = `inspect:${crypto.randomUUID()}`;
+        const reservation = await this.acquireFrom(slots, taskId, Date.now() + timeoutMs);
+        if (!reservation) throw runtimeError(`网站 ${siteId} 当前没有空闲页面`, 'site_capacity_unavailable', 409);
+        const { slot, token } = reservation;
+        const pageState = await slot.inspect(token, async page => {
+            const rawUrl = page.url();
+            let url = rawUrl;
+            try {
+                const parsed = new URL(rawUrl);
+                url = parsed.origin === 'null' ? `${parsed.protocol}${parsed.pathname}` : `${parsed.origin}${parsed.pathname}`;
+            } catch { /* keep the browser-provided URL */ }
+            return {
+                title: await page.title().catch(() => ''),
+                url,
+                closed: page.isClosed()
+            };
+        });
+        const cache = this.siteRegistry.getCacheStatus(siteId);
+        return {
+            ok: !pageState.closed,
+            checkedAt: new Date().toISOString(),
+            profileId,
+            siteId,
+            slotId: slot.id,
+            page: pageState,
+            models: {
+                count: this.siteRegistry.getModels(siteId).length,
+                refreshedAt: cache.refreshedAt || null
+            }
+        };
+    }
+
+    async probe(profileId, siteId, modelId, prompt, timeoutMs = 60000) {
+        const resolved = this.siteRegistry.resolveModel(modelId);
+        if (!resolved || resolved.siteId !== siteId) {
+            throw runtimeError(`网站 ${siteId} 不支持模型: ${modelId}`, 'model_unavailable', 404);
+        }
+        const slots = this.getProfileSiteSlots(profileId, siteId, modelId);
+        const taskId = `probe:${crypto.randomUUID()}`;
+        const startedAt = Date.now();
+        const reservation = await this.acquireFrom(slots, taskId, startedAt + timeoutMs);
+        if (!reservation) throw runtimeError(`网站 ${siteId} 当前没有空闲页面`, 'site_capacity_unavailable', 409);
+        const { slot, token } = reservation;
+        const result = await slot.execute(token, {}, prompt, [], modelId, {
+            id: taskId,
+            diagnostic: true,
+            requestTimeoutMs: Math.max(1000, startedAt + timeoutMs - Date.now())
+        });
+        return {
+            ok: !result?.error,
+            checkedAt: new Date().toISOString(),
+            profileId,
+            siteId,
+            modelId,
+            slotId: slot.id,
+            durationMs: Date.now() - startedAt,
+            result
         };
     }
 

@@ -100,6 +100,16 @@ curl http://localhost:3000/v1/chat/completions \
 
 图片输入使用 OpenAI 的 `image_url` 内容块和 Base64 Data URL。完整消息角色、顺序与历史会被保留；AI Studio 会把 system 消息写入 System Instructions。
 
+### 健康与检修
+
+- `GET /health`：无需认证的脱敏就绪状态，适合容器健康检查。
+- `GET /admin/diagnostics`：运行时、队列、网站缓存和连接状态快照，不包含 Cookie、凭据或消息正文。
+- `GET /admin/runtime/profiles/:profile/sites/:site/check`：在指定连接内检查网页与模型发现状态，不发送模型请求。
+- `POST /admin/runtime/profiles/:profile/sites/:site/probe`：在指定连接和网站的页面槽上执行真实探测。请求体为 `{"model":"规范模型 ID","prompt":"可选文本","timeoutMs":60000}`，不会转移到其他连接。
+- `POST /admin/sites/:site/models/refresh` 与 `POST /admin/runtime/profiles/:profile/restart`：刷新网页模型和单独重启连接。
+
+除 `/health` 外，以上管理接口使用与主 API 相同的访问令牌。诊断快照可以从控制台的“诊断”抽屉下载。
+
 ## 本地开发
 
 需要 Node.js 22、pnpm、Camoufox，以及 Linux 上的 Xvfb/x11vnc。

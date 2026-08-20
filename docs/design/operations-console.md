@@ -18,4 +18,6 @@ The deliberately distinctive element is the topology rail. Cards, motion, gradie
 
 Primary navigation is Overview, Connections, Requests, Live browser, and Settings. Logs and low-level diagnostics open in contextual drawers. UI copy names user-recognizable objects and actions: connection, website, parallel pages, sign in, restart. It never narrates implementation work or the prompt that led to a feature.
 
+The diagnostics drawer shows aggregate capacity and queue state before recent logs. Operators may download the same sanitized snapshot exposed by the maintenance API. The snapshot is safe to attach to a repair task because it excludes cookies, credentials, browser storage, and message bodies.
+
 The interface supports 390px width, visible keyboard focus, and reduced motion. When API authentication is disabled, the app skips the login modal and shows a persistent network exposure warning.

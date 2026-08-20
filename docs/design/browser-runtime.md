@@ -21,3 +21,5 @@ The runtime filters by canonical site/model support and health, orders idle slot
 ## Diagnostics
 
 Profile, display, site, slot, task, failure count, and last error are exposed through the admin runtime snapshot. Prompt bodies, cookies, credentials, and page storage are never included.
+
+`GET /health` exposes only readiness, config version, uptime, safe-mode state, and aggregate capacity. `GET /admin/diagnostics` is the authenticated maintenance snapshot. A site check atomically reserves one page in an exact profile/site pair and observes its sanitized URL, title, and model-cache state without generating content. A real probe also targets one exact profile/site pair and never fails over to another profile, so proxy and account acceptance results stay attributable.

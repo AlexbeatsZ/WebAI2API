@@ -38,5 +38,5 @@ EXPOSE 3000
 
 # 每个浏览器配置自行管理 Xvfb/VNC，不启动共享桌面。
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
-    CMD node -e "fetch('http://127.0.0.1:3000/admin/auth/status').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+    CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 CMD ["npm", "start"]

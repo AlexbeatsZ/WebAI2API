@@ -96,6 +96,35 @@ export function createAdminRouter(context) {
                 return;
             }
 
+            // GET /admin/diagnostics - 脱敏的运行与维护快照
+            if (method === 'GET' && pathname === '/diagnostics') {
+                const runtimeManager = getRuntimeManager?.();
+                const runtime = runtimeManager?.snapshot() || { profiles: [], slots: [], capacity: { healthy: 0, idle: 0, running: 0, total: 0 } };
+                const queue = queueManager?.getStatus?.() || { processing: 0, queueLength: 0, total: 0 };
+                const sites = (runtimeManager?.getSites?.() || []).map(site => ({
+                    id: site.id,
+                    name: site.name,
+                    available: site.available,
+                    models: site.models,
+                    refreshedAt: site.cache?.refreshedAt || null
+                }));
+                sendJson(res, 200, {
+                    generatedAt: new Date().toISOString(),
+                    uptimeSeconds: Math.floor(process.uptime()),
+                    configVersion: config.version,
+                    safeMode: getSafeMode?.() || { enabled: false, reason: null },
+                    queue: {
+                        processing: queue.processing,
+                        waiting: queue.queueLength,
+                        total: queue.total,
+                        limit: queueManager?.maxQueueSize ?? null
+                    },
+                    runtime,
+                    sites
+                });
+                return;
+            }
+
             // POST /admin/restart - 重启服务
             if (method === 'POST' && pathname === '/restart') {
                 // 解析请求体获取重启参数
@@ -174,6 +203,60 @@ export function createAdminRouter(context) {
 
             if (method === 'GET' && pathname === '/runtime/slots') {
                 sendJson(res, 200, getRuntimeManager?.()?.snapshot() || { profiles: [], slots: [], capacity: { healthy: 0, idle: 0, running: 0, total: 0 } });
+                return;
+            }
+
+            const checkSiteMatch = pathname.match(/^\/runtime\/profiles\/([^/]+)\/sites\/([^/]+)\/check$/);
+            if (method === 'GET' && checkSiteMatch) {
+                try {
+                    const result = await getRuntimeManager().inspectSite(
+                        decodeURIComponent(checkSiteMatch[1]),
+                        decodeURIComponent(checkSiteMatch[2])
+                    );
+                    sendJson(res, 200, result);
+                } catch (error) {
+                    sendApiError(res, {
+                        code: error.code || ERROR_CODES.INTERNAL_ERROR,
+                        message: error.message,
+                        status: error.status || 500
+                    });
+                }
+                return;
+            }
+
+            const probeSiteMatch = pathname.match(/^\/runtime\/profiles\/([^/]+)\/sites\/([^/]+)\/probe$/);
+            if (method === 'POST' && probeSiteMatch) {
+                try {
+                    const body = await readBody(req);
+                    if (typeof body.model !== 'string' || !body.model.includes('/')) {
+                        sendApiError(res, { code: ERROR_CODES.INVALID_MODEL, message: '必须提供规范模型 ID', status: 400 });
+                        return;
+                    }
+                    const prompt = body.prompt ?? 'Reply with READY only.';
+                    if (typeof prompt !== 'string' || prompt.length < 1 || prompt.length > 2000) {
+                        sendApiError(res, { code: ERROR_CODES.NO_MESSAGES, message: '探测文本长度必须为 1-2000 个字符', status: 400 });
+                        return;
+                    }
+                    const timeoutMs = body.timeoutMs ?? 60000;
+                    if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 120000) {
+                        sendApiError(res, { code: ERROR_CODES.INTERNAL_ERROR, message: 'timeoutMs 必须为 1000-120000 的整数', status: 400 });
+                        return;
+                    }
+                    const result = await getRuntimeManager().probe(
+                        decodeURIComponent(probeSiteMatch[1]),
+                        decodeURIComponent(probeSiteMatch[2]),
+                        body.model,
+                        prompt,
+                        timeoutMs
+                    );
+                    sendJson(res, 200, result);
+                } catch (error) {
+                    sendApiError(res, {
+                        code: error.code || ERROR_CODES.INTERNAL_ERROR,
+                        message: error.message,
+                        status: error.status || 500
+                    });
+                }
                 return;
             }
 

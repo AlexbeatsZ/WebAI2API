@@ -23,6 +23,7 @@ const loginVisible = ref(false);
 const mobileNav = ref(false);
 const diagnosticsOpen = ref(false);
 const logs = ref([]);
+const diagnostics = ref(null);
 const diagnosticsLoading = ref(false);
 
 const navigation = [
@@ -56,12 +57,27 @@ async function openDiagnostics() {
   diagnosticsOpen.value = true;
   diagnosticsLoading.value = true;
   try {
-    const response = await fetch('/admin/logs?lines=240', { headers: settings.getHeaders() });
-    const data = response.ok ? await response.json() : {};
-    logs.value = data.logs || data.lines || [];
+    const [diagnosticsResponse, logsResponse] = await Promise.all([
+      fetch('/admin/diagnostics', { headers: settings.getHeaders() }),
+      fetch('/admin/logs?lines=240', { headers: settings.getHeaders() })
+    ]);
+    diagnostics.value = diagnosticsResponse.ok ? await diagnosticsResponse.json() : null;
+    const logData = logsResponse.ok ? await logsResponse.json() : {};
+    logs.value = logData.logs || logData.lines || [];
   } finally {
     diagnosticsLoading.value = false;
   }
+}
+
+function downloadDiagnostics() {
+  if (!diagnostics.value) return;
+  const blob = new Blob([JSON.stringify(diagnostics.value, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `webai2api-diagnostics-${new Date().toISOString().replaceAll(':', '-')}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 function signOut() {
@@ -143,11 +159,20 @@ onUnmounted(() => window.removeEventListener('keydown', escapeHandler));
     <div v-if="diagnosticsOpen" class="drawer-scrim" @click.self="diagnosticsOpen = false">
       <aside class="diagnostics-drawer" aria-label="诊断">
         <header>
-          <div><span class="eyebrow">DIAGNOSTICS</span><h2>最近日志</h2></div>
-          <button class="icon-button" aria-label="关闭诊断" @click="diagnosticsOpen = false"><CloseOutlined /></button>
+          <div><span class="eyebrow">DIAGNOSTICS</span><h2>运行诊断</h2></div>
+          <div class="actions"><button class="button ghost" :disabled="!diagnostics" @click="downloadDiagnostics">下载快照</button><button class="icon-button" aria-label="关闭诊断" @click="diagnosticsOpen = false"><CloseOutlined /></button></div>
         </header>
-        <div v-if="diagnosticsLoading" class="empty-state">正在读取日志</div>
-        <pre v-else class="log-stream">{{ Array.isArray(logs) ? logs.join('\n') : logs }}</pre>
+        <div v-if="diagnosticsLoading" class="empty-state">正在读取运行状态</div>
+        <template v-else>
+          <div v-if="diagnostics" class="diagnostics-summary">
+            <div><span>健康并发页</span><strong>{{ diagnostics.runtime?.capacity?.healthy ?? 0 }}</strong></div>
+            <div><span>空闲</span><strong>{{ diagnostics.runtime?.capacity?.idle ?? 0 }}</strong></div>
+            <div><span>运行中</span><strong>{{ diagnostics.runtime?.capacity?.running ?? 0 }}</strong></div>
+            <div><span>等待</span><strong>{{ diagnostics.queue?.waiting ?? 0 }}</strong></div>
+          </div>
+          <div class="diagnostics-log-title"><span>最近日志</span><small>快照不包含 Cookie、凭据或消息正文</small></div>
+          <pre class="log-stream">{{ Array.isArray(logs) ? logs.join('\n') : logs }}</pre>
+        </template>
       </aside>
     </div>
   </template>

@@ -36,7 +36,7 @@ const WEBUI_DIR = path.join(process.cwd(), 'webui', 'dist');
  * @returns {Function} 请求处理函数
  */
 export function createGlobalRouter(context) {
-    const { authToken, config, queueManager, tempDir, loginMode, getSafeMode } = context;
+    const { authToken, config, queueManager, tempDir, loginMode, getSafeMode, getRuntimeManager } = context;
 
     // 创建鉴权中间件
     const checkAuth = createAuthMiddleware(authToken);
@@ -51,6 +51,22 @@ export function createGlobalRouter(context) {
     return async function handleRequest(req, res) {
         const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
         const pathname = parsedUrl.pathname;
+
+        if (req.method === 'GET' && pathname === '/health') {
+            const safeMode = getSafeMode?.() || { enabled: false };
+            const runtime = getRuntimeManager?.();
+            const capacity = runtime?.snapshot?.().capacity || { healthy: 0, idle: 0, running: 0, total: 0 };
+            const ready = Boolean(runtime?.initialized) && capacity.healthy > 0 && !safeMode.enabled;
+            res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+                status: ready ? 'ready' : 'degraded',
+                configVersion: config.version,
+                uptimeSeconds: Math.floor(process.uptime()),
+                safeMode: Boolean(safeMode.enabled),
+                capacity
+            }));
+            return;
+        }
 
         if (req.method === 'GET' && pathname === '/admin/auth/status') {
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });

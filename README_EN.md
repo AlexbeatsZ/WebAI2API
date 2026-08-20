@@ -60,6 +60,16 @@ curl http://localhost:3000/v1/chat/completions \
 
 The complete role order and conversation history are preserved. AI Studio receives system messages through System Instructions. Image inputs use OpenAI `image_url` content blocks with Base64 Data URLs.
 
+### Health and maintenance
+
+- `GET /health`: unauthenticated, sanitized readiness state for container health checks.
+- `GET /admin/diagnostics`: sanitized runtime, queue, model-cache, and connection snapshot.
+- `GET /admin/runtime/profiles/:profile/sites/:site/check`: inspect a page in one exact connection without generating content.
+- `POST /admin/runtime/profiles/:profile/sites/:site/probe`: run a real probe on one exact connection and site with `{"model":"canonical model ID","prompt":"optional text","timeoutMs":60000}`. It never fails over to another connection.
+- `POST /admin/sites/:site/models/refresh` and `POST /admin/runtime/profiles/:profile/restart`: refresh web models and restart one connection.
+
+All maintenance endpoints except `/health` use the main API token. The console diagnostics drawer can download the sanitized snapshot.
+
 ## Development
 
 ```bash

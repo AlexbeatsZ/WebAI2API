@@ -8,7 +8,8 @@ Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation ga
 - Production remains on `foxhui/webai-2api:latest` revision `84729fb` until the v4 migration and smoke tests pass.
 - v4 intentionally rejects legacy `backend.pool.instances/workers` configuration after the migration tool has produced `version: 4` configuration.
 - Persistent browser profile directories must never be deleted or shared by two browser processes.
-- The v4 runtime, canonical API, AI Studio/Gemini drivers, migration command, profile-scoped VNC, operations console, Docker/CI files, and automated tests are implemented locally.
+- The v4 runtime, canonical API, AI Studio/Gemini drivers, migration command, profile-scoped VNC, operations console, Docker/CI files, and automated tests are implemented and pushed.
+- Stable maintenance surfaces include public sanitized readiness, authenticated diagnostics, exact profile/site checks and probes, model refresh, profile restart, and profile-scoped VNC.
 - Automated tests pass and the built console has been exercised at 1440x900 and 390x844. The local Docker daemon cannot currently reach Debian package mirrors; CI and the production host remain the image-build gates.
 
 # Active Work
@@ -17,6 +18,7 @@ Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation ga
 - Back up the production Compose directory and all persistent browser data with hashes.
 - Run migration dry-run, add the planned Gemini and AI Studio page counts, then deploy the immutable image digest.
 - Complete live Gemini, AI Studio, ChatGPT, four-way concurrency, per-profile VNC, restart-isolation, desktop, and narrow-screen acceptance.
+- Use `7897` for initial production acceptance. Only move the isolated Gemini/AI Studio profile to `17897` after attributable Google login/TLS/auth-resource failures; never change host, Docker, or global proxy settings.
 
 # Build / Run / Test
 
@@ -31,6 +33,7 @@ Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation ga
 - `docs/design/browser-runtime.md`: profile, display, slot lifecycle, scheduling, and recovery invariants.
 - `docs/design/site-drivers.md`: canonical model IDs, driver contract, message compilation, and discovery.
 - `docs/design/operations-console.md`: information architecture, visual tokens, copy, responsive behavior, and auth state.
+- `docs/design/proxy-routing.md`: profile-scoped routing and the narrow fallback policy for the expensive Google route.
 
 # Durable Lessons
 
