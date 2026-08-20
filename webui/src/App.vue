@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings';
 import LoginModal from '@/components/auth/LoginModal.vue';
@@ -21,6 +21,9 @@ const settings = useSettingsStore();
 const ready = ref(false);
 const loginVisible = ref(false);
 const mobileNav = ref(false);
+const isNarrow = ref(false);
+const navOpenButton = ref(null);
+const navCloseButton = ref(null);
 const diagnosticsOpen = ref(false);
 const logs = ref([]);
 const diagnostics = ref(null);
@@ -39,6 +42,19 @@ const currentTitle = computed(() => navigation.find(item => item.path === route.
 function navigate(path) {
   router.push(path);
   mobileNav.value = false;
+}
+
+async function openMobileNav() {
+  mobileNav.value = true;
+  await nextTick();
+  navCloseButton.value?.focus();
+}
+
+async function closeMobileNav({ restoreFocus = true } = {}) {
+  mobileNav.value = false;
+  if (!restoreFocus) return;
+  await nextTick();
+  navOpenButton.value?.focus();
 }
 
 async function authenticate() {
@@ -87,16 +103,28 @@ function signOut() {
 
 function escapeHandler(event) {
   if (event.key === 'Escape') {
-    mobileNav.value = false;
+    if (mobileNav.value) closeMobileNav();
     diagnosticsOpen.value = false;
   }
+}
+
+let narrowQuery;
+function updateNarrow(event) {
+  isNarrow.value = event.matches;
+  if (!event.matches) mobileNav.value = false;
 }
 
 onMounted(() => {
   authenticate();
   window.addEventListener('keydown', escapeHandler);
+  narrowQuery = window.matchMedia('(max-width: 760px)');
+  updateNarrow(narrowQuery);
+  narrowQuery.addEventListener('change', updateNarrow);
 });
-onUnmounted(() => window.removeEventListener('keydown', escapeHandler));
+onUnmounted(() => {
+  window.removeEventListener('keydown', escapeHandler);
+  narrowQuery?.removeEventListener('change', updateNarrow);
+});
 </script>
 
 <template>
@@ -108,14 +136,19 @@ onUnmounted(() => window.removeEventListener('keydown', escapeHandler));
   <template v-else>
     <LoginModal v-model:visible="loginVisible" @success="authenticate" />
     <div class="app-shell">
-      <aside class="sidebar" :class="{ open: mobileNav }">
+      <aside
+        class="sidebar"
+        :class="{ open: mobileNav }"
+        :inert="isNarrow && !mobileNav"
+        :aria-hidden="isNarrow && !mobileNav ? 'true' : undefined"
+      >
         <div class="brand-block">
           <div class="brand-mark">W4</div>
           <div>
             <strong>WebAI2API</strong>
             <span>Browser operations</span>
           </div>
-          <button class="icon-button mobile-only" aria-label="关闭导航" @click="mobileNav = false"><CloseOutlined /></button>
+          <button ref="navCloseButton" class="icon-button mobile-only" aria-label="关闭导航" @click="closeMobileNav()"><CloseOutlined /></button>
         </div>
 
         <nav class="primary-nav" aria-label="主导航">
@@ -132,11 +165,11 @@ onUnmounted(() => window.removeEventListener('keydown', escapeHandler));
         </div>
       </aside>
 
-      <div v-if="mobileNav" class="nav-scrim" @click="mobileNav = false" />
+      <div v-if="mobileNav" class="nav-scrim" @click="closeMobileNav()" />
 
       <main class="main-stage">
         <header class="topbar">
-          <button class="icon-button mobile-only" aria-label="打开导航" @click="mobileNav = true"><MenuOutlined /></button>
+          <button ref="navOpenButton" class="icon-button mobile-only" aria-label="打开导航" @click="openMobileNav"><MenuOutlined /></button>
           <div>
             <span class="eyebrow">OPERATIONS</span>
             <h1>{{ currentTitle }}</h1>
