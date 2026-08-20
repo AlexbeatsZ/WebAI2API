@@ -24,7 +24,7 @@ RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.l
     && rm -rf /var/lib/apt/lists/*
 
 # 2. 安装服务依赖
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY scripts/ ./scripts/
 COPY patches/ ./patches/
 RUN npm install -g pnpm && pnpm install --frozen-lockfile
