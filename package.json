@@ -5,6 +5,7 @@
 	"license": "MIT",
 	"author": "foxhui",
 	"type": "module",
+	"packageManager": "pnpm@10.34.5",
 	"scripts": {
 		"start": "node supervisor.js",
 		"test": "node --test test/**/*.test.js",

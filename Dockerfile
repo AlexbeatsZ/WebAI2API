@@ -27,7 +27,7 @@ RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.l
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY scripts/ ./scripts/
 COPY patches/ ./patches/
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+RUN npm install -g pnpm@10.34.5 && pnpm install --frozen-lockfile
 
 # 3. 复制源码、构建控制台并初始化 Camoufox
 COPY . .
