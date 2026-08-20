@@ -204,6 +204,8 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
             ? { ...afterBlocked, retryable: false }
             : { error: 'AI Studio 未返回可读取的结果', retryable: true };
     } catch (error) {
+        const blocked = await detectBlockedState(page);
+        if (blocked) return { ...blocked, retryable: false };
         const pageError = normalizePageError(error, meta);
         if (pageError) return pageError;
         return { error: `AI Studio 请求失败: ${error.message}`, retryable: true };
