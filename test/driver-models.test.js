@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { detectBlockedState, normalizeModelLabel } from '../src/backend/adapter/ai_studio.js';
+import { detectGeminiBlockedState } from '../src/backend/adapter/gemini_text.js';
 
 test('AI Studio model labels produce stable, usable IDs', () => {
     assert.equal(normalizeModelLabel('Gemini 3.1 Pro').id, 'gemini-3.1-pro');
@@ -18,6 +19,18 @@ test('AI Studio region redirect is classified before DOM selectors run', async (
     });
     assert.deepEqual(result, {
         error: 'AI Studio 在当前网络出口不可用',
+        code: 'region_unavailable'
+    });
+});
+
+test('Gemini unsupported-country landing page is classified explicitly', async () => {
+    const result = await detectGeminiBlockedState({
+        locator: () => ({
+            innerText: async () => "Gemini isn’t currently supported in your country. Stay tuned!"
+        })
+    });
+    assert.deepEqual(result, {
+        error: 'Gemini 在当前网络出口不可用',
         code: 'region_unavailable'
     });
 });

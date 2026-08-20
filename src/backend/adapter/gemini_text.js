@@ -21,6 +21,20 @@ import crypto from 'crypto';
 // --- 配置常量 ---
 const TARGET_URL = 'https://gemini.google.com/app?hl=en';
 
+export async function detectGeminiBlockedState(page) {
+    const body = await page.locator('body').innerText().catch(() => '');
+    if (/isn[’']t currently supported in your country|not available in your country|当前(?:国家|地区).*(?:不支持|不可用)/i.test(body)) {
+        return { error: 'Gemini 在当前网络出口不可用', code: 'region_unavailable' };
+    }
+    if (/captcha|unusual traffic|verify you are human|验证码/i.test(body)) {
+        return { error: 'Gemini 页面需要人工验证', code: 'captcha_required' };
+    }
+    if (/sign in/i.test(body) && /Gemini/i.test(body)) {
+        return { error: '需要登录 Gemini', code: 'authentication_required' };
+    }
+    return null;
+}
+
 async function clickGeminiSend(page, inputLocator, sendBtnLocator, meta = {}) {
     const waitForEnabled = async (locator, timeout = 5000) => {
         await locator.waitFor({ state: 'visible', timeout });
@@ -155,6 +169,9 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         logger.info('适配器', '开启新会话...', meta);
         await gotoWithCheck(page, TARGET_URL);
 
+        const blocked = await detectGeminiBlockedState(page);
+        if (blocked) return { ...blocked, retryable: false };
+
         const useTempChat = config?.backend?.adapter?.gemini_text?.temporaryChat || false;
         if (useTempChat) {
             try {
@@ -243,6 +260,8 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         }
 
     } catch (err) {
+        const blocked = await detectGeminiBlockedState(page);
+        if (blocked) return { ...blocked, retryable: false };
         const pageError = normalizePageError(err, meta);
         if (pageError) return pageError;
 

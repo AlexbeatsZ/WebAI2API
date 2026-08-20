@@ -19,6 +19,67 @@ import { logger } from '../../utils/logger.js';
 const TARGET_URL = 'https://chatgpt.com/'; // 基础URL
 const INPUT_SELECTOR = '.ProseMirror';
 
+export function readAssistantSnapshot() {
+    const rejectExact = new Set(['Thinking', 'Instant', 'Pro', 'ChatGPT']);
+    const clean = (value) => (value || '')
+        .replace(/^ChatGPT said:\s*/i, '')
+        .replace(/\u00a0/g, ' ')
+        .trim();
+    const acceptable = (value) => {
+        const text = clean(value);
+        if (!text || rejectExact.has(text)) return '';
+        if (/^(Thinking|Instant|Pro)\s*$/i.test(text)) return '';
+        if (/^\d+\s*\/\s*\d+$/.test(text)) return '';
+        return text;
+    };
+
+    const nodes = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));
+    for (let i = nodes.length - 1; i >= 0; i--) {
+        const preferred = Array.from(nodes[i].querySelectorAll('.markdown, .prose, [data-message-content-part]'));
+        for (let j = preferred.length - 1; j >= 0; j--) {
+            const text = acceptable(preferred[j].innerText || preferred[j].textContent);
+            if (text) return { count: nodes.length, text };
+        }
+        const lines = clean(nodes[i].innerText || nodes[i].textContent)
+            .split('\n')
+            .map(line => clean(line))
+            .filter(Boolean)
+            .filter(line => !rejectExact.has(line));
+        const text = acceptable(lines.join('\n'));
+        if (text) return { count: nodes.length, text };
+    }
+    return { count: nodes.length, text: '' };
+}
+
+export function isChatgptGenerating() {
+    const text = document.body.innerText || '';
+    if (/Thinking\.\.\.|Thinking…|正在思考|思考中/.test(text)) return true;
+    return Array.from(document.querySelectorAll('button')).some((button) => {
+        const label = `${button.getAttribute('aria-label') || ''} ${button.innerText || button.textContent || ''}`;
+        return /stop generating|stop streaming|停止生成|停止回答|cancel/i.test(label);
+    });
+}
+
+async function waitForStableAssistantText(page, baseline, timeout) {
+    const startedAt = Date.now();
+    let lastText = '';
+    let stableCount = 0;
+    while (Date.now() - startedAt < timeout) {
+        const snapshot = await page.evaluate(readAssistantSnapshot).catch(() => ({ count: 0, text: '' }));
+        const changed = snapshot.count > baseline.count || snapshot.text !== baseline.text;
+        const generating = await page.evaluate(isChatgptGenerating).catch(() => false);
+        if (changed && snapshot.text && snapshot.text === lastText && !generating) {
+            stableCount++;
+        } else {
+            stableCount = 0;
+            lastText = changed ? snapshot.text : '';
+        }
+        if (lastText && !generating && stableCount >= 3) return lastText;
+        await sleep(450, 700);
+    }
+    return lastText;
+}
+
 /**
  * 通过 UI 选择模型
  * @param {import('playwright-core').Page} page - 页面对象
@@ -96,7 +157,10 @@ async function selectModel(page, codeName, meta = {}) {
  */
 async function generate(context, prompt, imgPaths, modelId, meta = {}) {
     const { page, config } = context;
-    const waitTimeout = config?.backend?.pool?.waitTimeout ?? 120000;
+    const waitTimeout = meta.requestTimeoutMs
+        || config?.runtime?.requestTimeoutMs
+        || config?.backend?.pool?.waitTimeout
+        || 120000;
     const sendBtnLocator = page.getByRole('button', { name: 'Send prompt' });
 
     try {
@@ -165,6 +229,8 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         let textContent = '';
         let isComplete = false;
         let targetMessageId = null;  // 只追踪 channel: "final" 的消息
+        const assistantBaseline = await page.evaluate(readAssistantSnapshot)
+            .catch(() => ({ count: 0, text: '' }));
 
         const responsePromise = page.waitForResponse(async (response) => {
             const url = response.url();
@@ -242,97 +308,27 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
 
         logger.info('适配器', '等待生成结果...', meta);
 
-        // 6. 等待 SSE 响应完成
-        try {
-            await responsePromise;
-        } catch (e) {
-            const pageError = normalizePageError(e, meta);
-            if (pageError) return pageError;
-            throw e;
-        }
+        // 6. 新旧 ChatGPT 页面使用过多个响应端点。网络解析优先，同时观察稳定的
+        // assistant DOM；任一先取得完整文本即可结束，不再为过期端点白等到超时。
+        const networkResult = responsePromise
+            .then(() => ({ type: 'network' }))
+            .catch(error => ({ type: 'network-error', error }));
+        const domResult = waitForStableAssistantText(page, assistantBaseline, waitTimeout)
+            .then(text => ({ type: 'dom', text }))
+            .catch(error => ({ type: 'dom-error', error }));
+        const firstResult = await Promise.race([networkResult, domResult]);
 
-        if (!textContent || textContent.trim() === '') {
-            logger.warn('适配器', 'SSE 未解析到文本，尝试 DOM 回退提取...', meta);
-            try {
-                const domWaitTimeout = Math.min(waitTimeout, 60000);
-                const extractAssistantText = () => {
-                    const rejectExact = new Set(['Thinking', 'Instant', 'Pro', 'ChatGPT']);
-                    const clean = (value) => (value || '')
-                        .replace(/^ChatGPT said:\s*/i, '')
-                        .replace(/\u00a0/g, ' ')
-                        .trim();
-                    const acceptable = (value) => {
-                        const text = clean(value);
-                        if (!text || rejectExact.has(text)) return '';
-                        if (/^(Thinking|Instant|Pro)\s*$/i.test(text)) return '';
-                        if (/^\d+\s*\/\s*\d+$/.test(text)) return '';
-                        return text;
-                    };
-
-                    const nodes = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));
-                    for (let i = nodes.length - 1; i >= 0; i--) {
-                        const node = nodes[i];
-                        const preferred = Array.from(node.querySelectorAll('.markdown, .prose, [data-message-content-part]'));
-                        for (let j = preferred.length - 1; j >= 0; j--) {
-                            const text = acceptable(preferred[j].innerText || preferred[j].textContent);
-                            if (text) return text;
-                        }
-
-                        const lines = clean(node.innerText || node.textContent)
-                            .split('\n')
-                            .map(line => clean(line))
-                            .filter(Boolean)
-                            .filter(line => !rejectExact.has(line));
-                        const text = acceptable(lines.join('\n'));
-                        if (text) return text;
-                    }
-                    return '';
-                };
-
-                const isGenerating = () => {
-                    const text = document.body.innerText || '';
-                    if (/Thinking\.\.\.|Thinking…|正在思考|思考中/.test(text)) return true;
-                    const buttons = Array.from(document.querySelectorAll('button'));
-                    return buttons.some((button) => {
-                        const label = `${button.getAttribute('aria-label') || ''} ${button.innerText || button.textContent || ''}`;
-                        return /stop generating|stop streaming|停止生成|停止回答|cancel/i.test(label);
-                    });
-                };
-
-                await page.waitForFunction(extractAssistantText, null, { timeout: domWaitTimeout }).catch(() => { });
-
-                let domText = '';
-                let lastText = '';
-                let stableCount = 0;
-                const stableStartedAt = Date.now();
-                while (Date.now() - stableStartedAt < domWaitTimeout) {
-                    const currentText = await page.evaluate(extractAssistantText);
-                    const generating = await page.evaluate(isGenerating).catch(() => false);
-                    if (currentText && currentText === lastText && !generating) {
-                        stableCount++;
-                    } else {
-                        stableCount = 0;
-                        lastText = currentText || lastText || '';
-                    }
-
-                    if (lastText && !generating && stableCount >= 8) {
-                        domText = lastText;
-                        break;
-                    }
-
-                    await sleep(1200, 1600);
-                }
-
-                if (!domText) {
-                    domText = lastText || await page.evaluate(extractAssistantText);
-                }
-
-                if (domText && domText.trim()) {
-                    textContent = domText.trim();
-                    logger.info('适配器', `DOM 回退提取文本成功 (${textContent.length} 字符)`, meta);
-                }
-            } catch (e) {
-                logger.warn('适配器', `DOM 回退提取失败: ${e.message}`, meta);
+        if (firstResult.type === 'dom' && firstResult.text) {
+            textContent = firstResult.text;
+            logger.info('适配器', `DOM 提取文本成功 (${textContent.length} 字符)`, meta);
+        } else if (!textContent.trim()) {
+            const fallback = await domResult;
+            if (fallback.type === 'dom' && fallback.text) {
+                textContent = fallback.text;
+                logger.info('适配器', `DOM 回退提取文本成功 (${textContent.length} 字符)`, meta);
+            } else if (firstResult.type === 'network-error') {
+                const pageError = normalizePageError(firstResult.error, meta);
+                if (pageError) return pageError;
             }
         }
 
