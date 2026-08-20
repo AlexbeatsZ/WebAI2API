@@ -41,21 +41,8 @@ export class BrowserProfile {
                 virtualDisplay: this.display.display
             });
             this.context = this.browserHandle.context;
-            this.context.once('close', () => {
-                if (!this.closing) {
-                    this.state = 'offline';
-                    for (const slot of this.slots) slot.state = SLOT_STATES.OFFLINE;
-                    this.onAvailability?.();
-                    clearTimeout(this.crashTimer);
-                    this.crashTimer = setTimeout(() => {
-                        this.crashTimer = null;
-                        this.restart().catch(error => {
-                            this.lastError = error.message;
-                            logger.error('运行时', `[${this.id}] 浏览器自动恢复失败`, { error: error.message });
-                        });
-                    }, 2000);
-                }
-            });
+            const ownedContext = this.context;
+            ownedContext.once('close', () => this.handleContextClose(ownedContext));
 
             const total = this.config.sites.reduce((sum, site) => sum + site.pages, 0);
             const pages = [this.browserHandle.page];
@@ -90,6 +77,23 @@ export class BrowserProfile {
             this.slots = [];
             throw error;
         }
+    }
+
+    handleContextClose(closedContext) {
+        // A context can emit close after an explicit restart has already installed its
+        // replacement. Only the currently owned context is allowed to trigger recovery.
+        if (this.context !== closedContext || this.closing || this.state === 'starting') return;
+        this.state = 'offline';
+        for (const slot of this.slots) slot.state = SLOT_STATES.OFFLINE;
+        this.onAvailability?.();
+        clearTimeout(this.crashTimer);
+        this.crashTimer = setTimeout(() => {
+            this.crashTimer = null;
+            this.restart().catch(error => {
+                this.lastError = error.message;
+                logger.error('运行时', `[${this.id}] 浏览器自动恢复失败`, { error: error.message });
+            });
+        }, 2000);
     }
 
     async restart() {

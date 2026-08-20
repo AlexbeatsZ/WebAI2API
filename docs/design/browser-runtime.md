@@ -18,6 +18,8 @@ Failures transition through `recovering`; three consecutive request failures tri
 
 The runtime filters by canonical site/model support and health, orders idle slots by last-used time, and atomically reserves the first available slot. When compatible slots are busy, requests wait on a runtime notification until `requestTimeoutMs`. Retryable failures use a different compatible slot when available. A profile restart only rebuilds that profile and its slots.
 
+Context-close recovery is ownership-scoped. A close event captures the context that registered it and may schedule recovery only while that exact context is still owned by the profile. A delayed close from a context replaced by an explicit restart is ignored; it must never tear down the new process or make a completed restart immediately restart again.
+
 ## Diagnostics
 
 Profile, display, site, slot, task, failure count, and last error are exposed through the admin runtime snapshot. Prompt bodies, cookies, credentials, and page storage are never included.

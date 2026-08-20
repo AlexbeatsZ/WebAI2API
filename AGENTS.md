@@ -15,7 +15,7 @@ Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation ga
 
 # Active Work
 
-- Publish and deploy the final AI Studio exception-path classification, then rerun its exact probe.
+- Publish and deploy the context-close ownership fix and final AI Studio exception-path classification, then rerun profile restart isolation and the AI Studio exact probe.
 - Keep production on port 7897 until the isolated 17897 listener is active and container-reachable.
 - Complete live Gemini, AI Studio, ChatGPT, four-way concurrency, per-profile VNC, restart-isolation, desktop, and narrow-screen acceptance.
 - Use `7897` for non-Google traffic. Only move the isolated profile containing Gemini and AI Studio to `17897` after the listener is active and container-reachable; never change host, Docker, ChatGPT, or global proxy settings.
@@ -42,3 +42,4 @@ Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation ga
 - Website output categories must not alter conversation parsing. The complete ordered message history is compiled before driver dispatch.
 - Reasoning text is not proof that a web mode was selected; selector actions and page state must be observable in diagnostics.
 - A successful webpage response does not prove a legacy network observer still matches. Response extraction must tolerate endpoint changes and use a stable, new-assistant DOM result as a bounded fallback.
+- Delayed close events from a replaced browser context must be ignored by the new context. Recovery callbacks require identity checks, not only a mutable `closing` flag.
