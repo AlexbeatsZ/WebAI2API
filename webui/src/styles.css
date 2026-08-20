@@ -105,6 +105,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .site-name { font-weight: 650; font-size: 12px; }
 .slot-track { display: flex; flex-wrap: wrap; gap: 6px; }
 .slot { min-width: 28px; height: 22px; padding: 0 7px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--surface-3); color: var(--faint); font: 10px ui-monospace, monospace; }
+.slot-action { cursor: pointer; border: 1px solid transparent; }
+.slot-action:hover, .slot-action:focus-visible { color: var(--text); border-color: var(--accent); }
 .slot.idle { color: var(--active); background: var(--active-soft); }
 .slot.running, .slot.reserved { color: var(--warning); background: var(--warning-soft); }
 .slot.offline { color: var(--danger); background: var(--danger-soft); }

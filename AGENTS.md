@@ -5,18 +5,18 @@ Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation ga
 # Current State
 
 - Repository: `AlexbeatsZ/WebAI2API`, branch `codex/webai2api-v4`, based on upstream `beac6c9`.
-- Production remains on `foxhui/webai-2api:latest` revision `84729fb` until the v4 migration and smoke tests pass.
+- Production is on the v4 GHCR image and strict v4 configuration. The pre-v4 rollback image is `sha256:c8b3ee330c7627d95a740f51f8119a9f16b3bcc93eb189a44bfbf6dbb6a74d20`; the verified full backup is `C:\Users\Meta\Project\Scripts\Docker\web2api-backups\pre-v4-20260821-030648` on the server.
 - v4 intentionally rejects legacy `backend.pool.instances/workers` configuration after the migration tool has produced `version: 4` configuration.
 - Persistent browser profile directories must never be deleted or shared by two browser processes.
 - The v4 runtime, canonical API, AI Studio/Gemini drivers, migration command, profile-scoped VNC, operations console, Docker/CI files, and automated tests are implemented and pushed.
 - Stable maintenance surfaces include public sanitized readiness, authenticated diagnostics, exact profile/site checks and probes, model refresh, profile restart, and profile-scoped VNC.
-- Automated tests pass and the built console has been exercised at 1440x900 and 390x844. The local Docker daemon cannot currently reach Debian package mirrors; CI and the production host remain the image-build gates.
+- Automated tests pass, CI publishes immutable images, and the built console has been exercised at 1440x900 and 390x844. The local Docker daemon cannot currently reach Debian package mirrors, so CI and the production host remain the image-build gates.
+- Current live acceptance findings: Gemini reaches its site but the new page does not match the existing input locator; AI Studio redirects to Google's available-regions page on port 7897. Port 17897 is not active in the server's current mihomo process and must not be configured until it is reachable from the container.
 
 # Active Work
 
-- Push the implementation so GitHub Actions can verify and publish the v4 image.
-- Back up the production Compose directory and all persistent browser data with hashes.
-- Run migration dry-run, add the planned Gemini and AI Studio page counts, then deploy the immutable image digest.
+- Publish and deploy the maintenance-landmark update, then use exact profile/site checks to update the live Gemini selectors.
+- Keep production on port 7897 until the isolated 17897 listener is active and container-reachable.
 - Complete live Gemini, AI Studio, ChatGPT, four-way concurrency, per-profile VNC, restart-isolation, desktop, and narrow-screen acceptance.
 - Use `7897` for initial production acceptance. Only move the isolated Gemini/AI Studio profile to `17897` after attributable Google login/TLS/auth-resource failures; never change host, Docker, or global proxy settings.
 

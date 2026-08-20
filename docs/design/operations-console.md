@@ -20,4 +20,6 @@ Primary navigation is Overview, Connections, Requests, Live browser, and Setting
 
 The diagnostics drawer shows aggregate capacity and queue state before recent logs. Operators may download the same sanitized snapshot exposed by the maintenance API. The snapshot is safe to attach to a repair task because it excludes cookies, credentials, browser storage, and message bodies.
 
+Live browser site chips are actions, not passive labels. Selecting one reserves an idle page for that site, brings it to the front of the profile display, and releases the page before the operator interacts through VNC.
+
 The interface supports 390px width, visible keyboard focus, and reduced motion. When API authentication is disabled, the app skips the login modal and shows a persistent network exposure warning.

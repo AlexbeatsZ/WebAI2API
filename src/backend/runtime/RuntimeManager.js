@@ -181,16 +181,50 @@ export class RuntimeManager {
         if (!reservation) throw runtimeError(`网站 ${siteId} 当前没有空闲页面`, 'site_capacity_unavailable', 409);
         const { slot, token } = reservation;
         const pageState = await slot.inspect(token, async page => {
+            await page.bringToFront().catch(() => {});
             const rawUrl = page.url();
             let url = rawUrl;
             try {
                 const parsed = new URL(rawUrl);
                 url = parsed.origin === 'null' ? `${parsed.protocol}${parsed.pathname}` : `${parsed.origin}${parsed.pathname}`;
             } catch { /* keep the browser-provided URL */ }
+            const landmarks = await page.locator([
+                'textarea',
+                'input',
+                '[contenteditable="true"]',
+                'button',
+                '[role="button"]',
+                '[role="combobox"]',
+                '[role="textbox"]',
+                '[role="option"]',
+                '[role="menuitem"]'
+            ].join(',')).evaluateAll(nodes => nodes
+                .filter(node => {
+                    const style = window.getComputedStyle(node);
+                    const rect = node.getBoundingClientRect();
+                    return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+                })
+                .slice(0, 120)
+                .map(node => ({
+                    tag: node.tagName.toLowerCase(),
+                    id: node.id || null,
+                    role: node.getAttribute('role'),
+                    ariaLabel: node.getAttribute('aria-label'),
+                    placeholder: node.getAttribute('placeholder'),
+                    title: node.getAttribute('title'),
+                    name: node.getAttribute('name'),
+                    type: node.getAttribute('type'),
+                    contentEditable: node.getAttribute('contenteditable'),
+                    testId: node.getAttribute('data-testid'),
+                    className: typeof node.className === 'string' ? node.className.slice(0, 180) : null,
+                    disabled: Boolean(node.disabled) || node.getAttribute('aria-disabled') === 'true'
+                })))
+                .catch(() => []);
             return {
                 title: await page.title().catch(() => ''),
                 url,
-                closed: page.isClosed()
+                closed: page.isClosed(),
+                landmarks
             };
         });
         const cache = this.siteRegistry.getCacheStatus(siteId);

@@ -69,6 +69,15 @@ async function restart() {
   await load();
 }
 
+async function focusSite(siteId) {
+  error.value = '';
+  const response = await fetch(`/admin/runtime/profiles/${encodeURIComponent(profileId.value)}/sites/${encodeURIComponent(siteId)}/check`, { headers: settings.getHeaders() });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    error.value = body.error?.message || `无法打开 ${siteId}`;
+  }
+}
+
 function fullscreen() {
   container.value?.requestFullscreen();
 }
@@ -92,7 +101,7 @@ onUnmounted(disconnect);
           <div class="actions"><button v-if="connectionState !== 'connected'" class="button primary" :disabled="!vncStatus?.enabled || connectionState === 'connecting'" @click="connect"><DesktopOutlined />{{ connectionState === 'connecting' ? '正在连接' : '打开画面' }}</button><button v-else class="button danger" @click="disconnect"><DisconnectOutlined />断开</button><button class="button" :disabled="connectionState !== 'connected'" @click="fullscreen"><ExpandOutlined />全屏</button><button class="button ghost" :disabled="!profileId" @click="restart">重启连接</button></div>
         </div>
 
-        <div v-if="selectedProfile" class="slot-track" style="margin-bottom:12px"><span class="status-pill" :class="selectedProfile.state">{{ stateLabels[selectedProfile.state] || selectedProfile.state }}</span><span v-for="site in selectedProfile.sites" :key="site.id" class="slot">{{ site.id }} · {{ site.pages }}</span><span v-if="vncStatus?.display" class="slot idle">{{ vncStatus.display }}</span></div>
+        <div v-if="selectedProfile" class="slot-track" style="margin-bottom:12px"><span class="status-pill" :class="selectedProfile.state">{{ stateLabels[selectedProfile.state] || selectedProfile.state }}</span><button v-for="site in selectedProfile.sites" :key="site.id" class="slot slot-action" :aria-label="`查看 ${site.id}`" @click="focusSite(site.id)">{{ site.id }} · {{ site.pages }}</button><span v-if="vncStatus?.display" class="slot idle">{{ vncStatus.display }}</span></div>
         <div ref="container" class="browser-stage">
           <div v-if="connectionState !== 'connected'" class="browser-placeholder"><DesktopOutlined /><template v-if="!profiles.length">没有可用的浏览器连接</template><template v-else-if="!vncStatus?.enabled">此连接没有远程画面</template><template v-else>打开画面后可完成登录或处理网页验证</template><div v-if="error" style="margin-top:10px;color:var(--danger)">{{ error }}</div></div>
         </div>

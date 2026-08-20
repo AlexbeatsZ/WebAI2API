@@ -42,12 +42,15 @@ async function firstVisible(locators) {
     return null;
 }
 
-async function detectBlockedState(page) {
+export async function detectBlockedState(page) {
+    if (/ai\.google\.dev\/gemini-api\/docs\/available-regions/i.test(page.url())) {
+        return { error: 'AI Studio 在当前网络出口不可用', code: 'region_unavailable' };
+    }
     const body = await page.locator('body').innerText().catch(() => '');
-    if (/sign in|登录/i.test(body) && /Google AI Studio|AI Studio/i.test(body)) return '需要登录 AI Studio';
-    if (/captcha|unusual traffic|verify you are human|验证码/i.test(body)) return '页面需要人工验证';
-    if (/terms of service|accept.*terms|服务条款/i.test(body)) return '需要接受 AI Studio 使用条款';
-    if (/rate limit|too many requests|quota|配额|请求过多/i.test(body)) return 'AI Studio 当前受到限流';
+    if (/sign in|登录/i.test(body) && /Google AI Studio|AI Studio/i.test(body)) return { error: '需要登录 AI Studio', code: 'authentication_required' };
+    if (/captcha|unusual traffic|verify you are human|验证码/i.test(body)) return { error: '页面需要人工验证', code: 'captcha_required' };
+    if (/terms of service|accept.*terms|服务条款/i.test(body)) return { error: '需要接受 AI Studio 使用条款', code: 'terms_required' };
+    if (/rate limit|too many requests|quota|配额|请求过多/i.test(body)) return { error: 'AI Studio 当前受到限流', code: 'rate_limited' };
     return null;
 }
 
@@ -152,7 +155,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
     try {
         await gotoWithCheck(page, TARGET_URL);
         const blocked = await detectBlockedState(page);
-        if (blocked) return { error: blocked, code: 'authentication_required', retryable: false };
+        if (blocked) return { ...blocked, retryable: false };
 
         const modelError = await selectModel(page, modelId, meta);
         if (modelError) return modelError;
@@ -194,7 +197,9 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         const domText = await extractStableDomText(page, timeout);
         if (domText) return { text: domText.trim() };
         const afterBlocked = await detectBlockedState(page);
-        return { error: afterBlocked || 'AI Studio 未返回可读取的结果', retryable: !afterBlocked };
+        return afterBlocked
+            ? { ...afterBlocked, retryable: false }
+            : { error: 'AI Studio 未返回可读取的结果', retryable: true };
     } catch (error) {
         const pageError = normalizePageError(error, meta);
         if (pageError) return pageError;
