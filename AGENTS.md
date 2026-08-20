@@ -10,15 +10,14 @@ Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation ga
 - Persistent browser profile directories must never be deleted or shared by two browser processes.
 - The v4 runtime, canonical API, AI Studio/Gemini drivers, migration command, profile-scoped VNC, operations console, Docker/CI files, and automated tests are implemented and pushed.
 - Stable maintenance surfaces include public sanitized readiness, authenticated diagnostics, exact profile/site checks and probes, model refresh, profile restart, and profile-scoped VNC.
-- Automated tests pass, CI publishes immutable images, and the built console has been exercised at 1440x900 and 390x844. The local Docker daemon cannot currently reach Debian package mirrors, so CI and the production host remain the image-build gates.
-- Current live acceptance findings: ChatGPT's exact probe returns the expected API result in about 17 seconds using the stable DOM observer. On port 7897 Gemini explicitly returns `region_unavailable`; AI Studio is also redirected to Google's available-regions page and the driver prioritizes blocked-state classification at every error exit. Port 17897 is not active in the server's current mihomo process and must not be selected until it is reachable from the container.
+- Twenty-one automated tests pass, CI publishes immutable images, and the deployed console has been exercised at desktop and 390x844. Closed mobile navigation is removed from the focus order and returns focus to its trigger. The local Docker daemon cannot currently reach Debian package mirrors, so CI and the production host remain the image-build gates.
+- Current live acceptance findings: ChatGPT's exact probe, OpenAI-compatible non-streaming response, and SSE response return the expected text. Restarting the Google profile while ChatGPT generates leaves ChatGPT successful and returns with all six slots healthy and idle. On port 7897 Gemini and AI Studio explicitly return `region_unavailable`; AI Studio classifies the redirect in about six seconds. Port 17897 is not active in the server's current mihomo process and must not be selected until it is reachable from the container.
 
 # Active Work
 
-- Publish and deploy the context-close ownership fix and final AI Studio exception-path classification, then rerun profile restart isolation and the AI Studio exact probe.
 - Keep production on port 7897 until the isolated 17897 listener is active and container-reachable.
-- Complete live Gemini, AI Studio, ChatGPT, four-way concurrency, per-profile VNC, restart-isolation, desktop, and narrow-screen acceptance.
-- Use `7897` for non-Google traffic. Only move the isolated profile containing Gemini and AI Studio to `17897` after the listener is active and container-reachable; never change host, Docker, ChatGPT, or global proxy settings.
+- After explicit approval to change the server's Clash Verge user network configuration, activate the dedicated 17897 listener, remove the redundant `chatgpt-web` page from `meta`, and route only `gemini-web` and `ai-studio` in that profile through 17897. ChatGPT, Docker, the host, and the global proxy remain on 7897.
+- Complete live Gemini and AI Studio text/image plus two-by-two four-way concurrency acceptance on the dedicated route.
 
 # Build / Run / Test
 
