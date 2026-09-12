@@ -14,6 +14,11 @@ import {
     gotoWithCheck
 } from '../utils/index.js';
 import { logger } from '../../utils/logger.js';
+import {
+    ChatGptProjectConversation,
+    composeProjectPrompt,
+    dismissWorkspaceLimitNotice
+} from './chatgpt-project.js';
 
 // --- 配置常量 ---
 const TARGET_URL = 'https://chatgpt.com/'; // 基础URL
@@ -162,12 +167,38 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         || config?.backend?.pool?.waitTimeout
         || 120000;
     const sendBtnLocator = page.getByRole('button', { name: 'Send prompt' });
+    const projectEnabled = Boolean(config?.backend?.adapter?.chatgpt_text?.projectUrl);
+    let projectConversation = null;
+    let sourceMessageId = meta.sourceMessageId;
+    let effectivePrompt = prompt;
 
     try {
-        const useTemp = config?.backend?.adapter?.chatgpt_text?.temporaryChat || false;
-        const targetUrl = useTemp ? 'https://chatgpt.com/?temporary-chat=true' : 'https://chatgpt.com/'; // 感谢 @zhongjianhua163 提供临时对话方案
-        logger.info('适配器', '开启新会话...', meta);
-        await gotoWithCheck(page, targetUrl);
+        if (projectEnabled) {
+            sourceMessageId ||= meta.diagnostic ? `webai-probe:${meta.id}` : null;
+            if (!sourceMessageId) {
+                return {
+                    error: 'Project mode requires OpenClaw Conversation info.message_id',
+                    retryable: false
+                };
+            }
+            projectConversation = new ChatGptProjectConversation(page, config, meta);
+            const prepared = await projectConversation.prepare(sourceMessageId);
+            if (prepared.recovered) {
+                logger.info('适配器', '从活动 Project 会话恢复了已完成的回复观察', meta);
+                return { text: prepared.recovered, recovered: true };
+            }
+            if (prepared.error) return prepared;
+            effectivePrompt = composeProjectPrompt(
+                sourceMessageId,
+                meta.latestUserPrompt || prompt
+            );
+        } else {
+            const useTemp = config?.backend?.adapter?.chatgpt_text?.temporaryChat || false;
+            const targetUrl = useTemp ? 'https://chatgpt.com/?temporary-chat=true' : 'https://chatgpt.com/'; // 感谢 @zhongjianhua163 提供临时对话方案
+            logger.info('适配器', '开启新会话...', meta);
+            await gotoWithCheck(page, targetUrl);
+        }
+        await dismissWorkspaceLimitNotice(page, meta);
 
         // 1. 等待输入框加载
         await waitForInput(page, INPUT_SELECTOR, { click: false });
@@ -221,7 +252,16 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         // 3. 输入提示词
         logger.info('适配器', '输入提示词...', meta);
         await safeClick(page, INPUT_SELECTOR, { bias: 'input' });
-        await humanType(page, INPUT_SELECTOR, prompt);
+        if (projectConversation) {
+            await page.keyboard.press('Control+A').catch(() => { });
+            await page.keyboard.press('Backspace').catch(() => { });
+            const attached = await projectConversation.attachMcpApp(
+                page.locator(INPUT_SELECTOR).last()
+            );
+            await page.keyboard.insertText(`${attached ? '\n' : ''}${effectivePrompt}`);
+        } else {
+            await humanType(page, INPUT_SELECTOR, effectivePrompt);
+        }
 
         // 4. 先启动 SSE 监听，再发送提示词（避免竞态）
         logger.info('适配器', '监听 SSE 流获取文本...', meta);
@@ -305,6 +345,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         // 5. 发送提示词
         logger.debug('适配器', '发送提示词...', meta);
         await page.keyboard.press('Enter');
+        if (projectConversation) await projectConversation.markSubmitted(sourceMessageId);
 
         logger.info('适配器', '等待生成结果...', meta);
 
@@ -338,6 +379,13 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         }
 
         logger.info('适配器', `已获取文本内容 (${textContent.length} 字符)`, meta);
+        if (projectConversation) {
+            const observation = await projectConversation.complete(
+                sourceMessageId,
+                textContent.trim()
+            );
+            logger.info('适配器', `MCP 接受结果观察: ${observation.accepted ? '已看到' : '未看到'}`, meta);
+        }
         logger.info('适配器', '文本生成完成，任务完成', meta);
         return { text: textContent.trim() };
 
@@ -367,11 +415,39 @@ export const manifest = {
             type: 'boolean',
             default: false,
             note: '开启后将使用临时对话模式 (?temporary-chat=true)'
+        },
+        {
+            key: 'projectUrl',
+            label: '固定 Project URL',
+            type: 'string',
+            default: '',
+            note: '设置后启用固定 Project、活动会话复用与 MCP 恢复观察'
+        },
+        {
+            key: 'mcpAppName',
+            label: 'MCP App 名称',
+            type: 'string',
+            default: 'AI Decision'
+        },
+        {
+            key: 'conversationRolloverMode',
+            label: '换会话模式',
+            type: 'select',
+            default: 'run_count',
+            options: ['run_count', 'fixed_time', 'manual']
+        },
+        {
+            key: 'maxRunsPerChat',
+            label: '每个会话最大轮数',
+            type: 'number',
+            default: 80
         }
     ],
 
     // 入口 URL
     getTargetUrl(config, workerConfig) {
+        const projectUrl = config?.backend?.adapter?.chatgpt_text?.projectUrl;
+        if (projectUrl) return projectUrl;
         const useTemp = config?.backend?.adapter?.chatgpt_text?.temporaryChat || false;
         return useTemp ? 'https://chatgpt.com/?temporary-chat=true' : 'https://chatgpt.com/';
     },

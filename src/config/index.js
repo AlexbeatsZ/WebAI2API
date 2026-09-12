@@ -8,6 +8,7 @@ import path from 'path';
 import yaml from 'yaml';
 import { logger } from '../utils/logger.js';
 import { getSiteDefinition } from '../backend/sites/catalog.js';
+import { validateChatgptProjectConfig } from '../backend/adapter/chatgpt-project.js';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DATA_CONFIG_PATH = path.join(DATA_DIR, 'config.yaml');
@@ -152,6 +153,17 @@ function normalizeConfig(raw, configPath) {
     // Instance/Worker compatibility layer.
     config.backend ||= {};
     config.backend.adapter ||= {};
+    const projectErrors = validateChatgptProjectConfig(config.backend.adapter.chatgpt_text);
+    assert(projectErrors.length === 0, projectErrors.join('; '));
+    if (config.backend.adapter.chatgpt_text?.projectUrl) {
+        for (const profile of config.browserProfiles) {
+            const chatgpt = profile.sites.find(site => site.id === 'chatgpt-web');
+            assert(
+                !chatgpt || chatgpt.pages === 1,
+                `固定 ChatGPT Project 模式要求浏览器配置 ${profile.id} 仅使用 1 个 ChatGPT 页面`
+            );
+        }
+    }
     config.backend.pool = {
         strategy: 'least_busy',
         waitTimeout: config.runtime.requestTimeoutMs,

@@ -37,4 +37,13 @@ browser:
     font: false
 
 backend:
-  adapter: {}
+  adapter:
+    chatgpt_text:
+      temporaryChat: false
+      # projectUrl: https://chatgpt.com/g/g-p-example/project
+      # mcpAppName: AI Decision
+      # requireMcpApp: true
+      # conversationRolloverMode: run_count # run_count | fixed_time | manual
+      # maxRunsPerChat: 80
+      # timezone: Asia/Shanghai
+      # logicalDayStartsAtHour: 4

@@ -1,6 +1,6 @@
 # Goal
 
-Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation gateway with canonical site/model IDs, isolated browser profiles, atomic page-slot concurrency, AI Studio Chat Playground support, and a dark operations console.
+Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation gateway with canonical site/model IDs, isolated browser profiles, atomic page-slot concurrency, AI Studio Chat Playground support, a deep fixed-Project MCP conversation mode for AI Decision, and a dark operations console.
 
 # Current State
 
@@ -10,14 +10,16 @@ Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation ga
 - Persistent browser profile directories must never be deleted or shared by two browser processes.
 - The v4 runtime, canonical API, AI Studio/Gemini drivers, migration command, profile-scoped VNC, operations console, Docker/CI files, and automated tests are implemented and pushed.
 - Stable maintenance surfaces include public sanitized readiness, authenticated diagnostics, exact profile/site checks and probes, model refresh, profile restart, and profile-scoped VNC.
-- Twenty-one automated tests pass, CI publishes immutable images, and the deployed console has been exercised at desktop and 390x844. Closed mobile navigation is removed from the focus order and returns focus to its trigger. The local Docker daemon cannot currently reach Debian package mirrors, so CI and the production host remain the image-build gates.
+- Twenty-eight automated tests pass, CI publishes immutable images, and the deployed console has been exercised at desktop and 390x844. Closed mobile navigation is removed from the focus order and returns focus to its trigger. The local Docker daemon cannot currently reach Debian package mirrors, so CI and the production host remain the image-build gates.
 - Current live acceptance findings: ChatGPT's exact probe, OpenAI-compatible non-streaming response, and SSE response return the expected text. Restarting the Google profile while ChatGPT generates leaves ChatGPT successful and returns with all six slots healthy and idle. On port 7897 Gemini and AI Studio explicitly return `region_unavailable`; AI Studio classifies the redirect in about six seconds. Port 17897 is not active in the server's current mihomo process and must not be selected until it is reachable from the container.
+- The fixed ChatGPT Project module now preserves one Active Chat per browser profile, extracts only marked OpenClaw source IDs, recovers source markers, supports run-count/fixed-time/manual rollover, selects the configured MCP app per message, records MCP acceptance as observation, returns final text only as observation, and suppresses workspace-limit banner layout shifts. It is not yet deployed or live-accepted.
 
 # Active Work
 
 - Keep production on port 7897 until the isolated 17897 listener is active and container-reachable.
 - After explicit approval to change the server's Clash Verge user network configuration, activate the dedicated 17897 listener, remove the redundant `chatgpt-web` page from `meta`, and route only `gemini-web` and `ai-studio` in that profile through 17897. ChatGPT, Docker, the host, and the global proxy remain on 7897.
 - Complete live Gemini and AI Studio text/image plus two-by-two four-way concurrency acceptance on the dedicated route.
+- Deploy and live-accept the authenticated AI Decision Project path, then switch only the dedicated OpenClaw binding after proving `NO_REPLY` suppresses automatic delivery.
 
 # Build / Run / Test
 
@@ -33,6 +35,7 @@ Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation ga
 - `docs/design/site-drivers.md`: canonical model IDs, driver contract, message compilation, and discovery.
 - `docs/design/operations-console.md`: information architecture, visual tokens, copy, responsive behavior, and auth state.
 - `docs/design/proxy-routing.md`: profile-scoped routing and the narrow fallback policy for the expensive Google route.
+- `docs/design/chatgpt-project-mcp.md`: fixed Project identity, source-marker recovery, MCP app selection, Active Chat rollover, and the no-second-reply boundary.
 
 # Durable Lessons
 
@@ -42,3 +45,4 @@ Deliver WebAI2API v4 as a product-grade, OpenAI-compatible browser automation ga
 - Reasoning text is not proof that a web mode was selected; selector actions and page state must be observable in diagnostics.
 - A successful webpage response does not prove a legacy network observer still matches. Response extraction must tolerate endpoint changes and use a stable, new-assistant DOM result as a bounded fallback.
 - Delayed close events from a replaced browser context must be ignored by the new context. Recovery callbacks require identity checks, not only a mutable `closing` flag.
+- A fixed Project completion must submit only the current OpenClaw turn into the reused Active Chat; replaying the caller's entire transcript duplicates history. The assistant DOM/SSE result is recovery evidence, never the User Delivery payload.

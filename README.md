@@ -64,6 +64,27 @@ browserProfiles:
 
 两个浏览器连接不能共享同一个 `userDataDir`。修改连接或浏览器设置后需重启服务；移除连接不会删除登录目录。
 
+### 固定 ChatGPT Project + MCP
+
+为 AI Decision 这类 Project 工作流启用深会话模式：
+
+```yaml
+backend:
+  adapter:
+    chatgpt_text:
+      projectUrl: https://chatgpt.com/g/g-p-example/project
+      mcpAppName: AI Decision
+      requireMcpApp: true
+      conversationRolloverMode: run_count # run_count | fixed_time | manual
+      maxRunsPerChat: 80
+      timezone: Asia/Shanghai
+      logicalDayStartsAtHour: 4
+```
+
+此模式每个浏览器连接只允许一个 ChatGPT 并发页。它从 OpenClaw 标记的 `Conversation info` 提取稳定消息 ID，在固定 Project 内复用并恢复 Active Chat，并为每条消息选择 MCP App。网页最终回复只作为观察返回；面向用户的内容必须由 MCP Decision 产生的 Delivery Effect 投递。
+
+手动换会话使用 `POST /admin/runtime/profiles/:profile/chatgpt/conversation/roll`；`GET /admin/runtime/profiles/:profile/chatgpt/conversation` 返回脱敏状态。
+
 ### 从 v3 迁移
 
 v4 不会隐式读取 `instances`/`workers`。先预览，再写入一个新文件：
@@ -107,6 +128,7 @@ curl http://localhost:3000/v1/chat/completions \
 - `GET /admin/runtime/profiles/:profile/sites/:site/check`：在指定连接内检查网页与模型发现状态，不发送模型请求。
 - `POST /admin/runtime/profiles/:profile/sites/:site/probe`：在指定连接和网站的页面槽上执行真实探测。请求体为 `{"model":"规范模型 ID","prompt":"可选文本","timeoutMs":60000}`，不会转移到其他连接。
 - `POST /admin/sites/:site/models/refresh` 与 `POST /admin/runtime/profiles/:profile/restart`：刷新网页模型和单独重启连接。
+- `GET /admin/runtime/profiles/:profile/chatgpt/conversation` 与对应的 `POST .../roll`：读取 Active Chat 状态或请求手动换会话。
 
 除 `/health` 外，以上管理接口使用与主 API 相同的访问令牌。诊断快照可以从控制台的“诊断”抽屉下载。
 

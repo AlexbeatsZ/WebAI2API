@@ -90,6 +90,20 @@ export async function parseRequest(data, options) {
     return parseConversationRequest(messages, tempDir, imageLimit, data.model, isStreaming, getImagePolicy);
 }
 
+export function extractOpenClawMessageId(content) {
+    const text = String(content || '');
+    const block = text.match(/Conversation info:\s*⟦openclaw:ctx⟧\s*\n```json\s*\n([\s\S]*?)\n```/i);
+    if (!block) return null;
+    try {
+        const value = JSON.parse(block[1]);
+        return typeof value?.message_id === 'string' && value.message_id.trim()
+            ? value.message_id.trim()
+            : null;
+    } catch {
+        return null;
+    }
+}
+
 /**
  * 解析文本请求 (构建虚拟上下文)
  */
@@ -163,6 +177,8 @@ async function parseConversationRequest(messages, tempDir, imageLimit, modelId, 
         .filter(item => item.role !== 'system')
         .map(item => item.text)
         .join('\n\n');
+    const latestUserPrompt = compiled.findLast(item => item.role === 'user')?.text || '';
+    const sourceMessageId = extractOpenClawMessageId(latestUserPrompt);
 
     const hasImage = imagePaths.length > 0;
     const policy = getImagePolicy(modelId);
@@ -182,7 +198,9 @@ async function parseConversationRequest(messages, tempDir, imageLimit, modelId, 
             modelName: modelId,
             isStreaming,
             systemInstruction,
-            conversationPrompt
+            conversationPrompt,
+            latestUserPrompt,
+            sourceMessageId
         }
     };
 }

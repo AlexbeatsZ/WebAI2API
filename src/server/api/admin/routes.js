@@ -267,6 +267,30 @@ export function createAdminRouter(context) {
                 return;
             }
 
+            const conversationMatch = pathname.match(
+                /^\/runtime\/profiles\/([^/]+)\/chatgpt\/conversation$/
+            );
+            if (method === 'GET' && conversationMatch) {
+                const state = getRuntimeManager().getChatgptConversation(
+                    decodeURIComponent(conversationMatch[1])
+                );
+                sendJson(res, 200, state);
+                return;
+            }
+
+            const rollConversationMatch = pathname.match(
+                /^\/runtime\/profiles\/([^/]+)\/chatgpt\/conversation\/roll$/
+            );
+            if (method === 'POST' && rollConversationMatch) {
+                const body = await readBody(req);
+                const state = getRuntimeManager().rollChatgptConversation(
+                    decodeURIComponent(rollConversationMatch[1]),
+                    body.reason || 'external'
+                );
+                sendJson(res, 200, { success: true, conversation: state });
+                return;
+            }
+
             const refreshModelsMatch = pathname.match(/^\/sites\/([^/]+)\/models\/refresh$/);
             if (method === 'POST' && refreshModelsMatch) {
                 const models = await getRuntimeManager().refreshModels(decodeURIComponent(refreshModelsMatch[1]));

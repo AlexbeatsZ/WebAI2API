@@ -3,6 +3,10 @@ import { SLOT_STATES } from './PageSlot.js';
 import { siteRegistry } from '../sites/SiteRegistry.js';
 import { logger } from '../../utils/logger.js';
 import crypto from 'crypto';
+import {
+    getProjectConversationState,
+    rollProjectConversation
+} from '../adapter/chatgpt-project.js';
 
 function runtimeError(message, code, status) {
     const error = new Error(message);
@@ -275,6 +279,20 @@ export class RuntimeManager {
         if (!profile) throw new Error(`浏览器配置不存在: ${profileId}`);
         await profile.restart();
         return profile.snapshot();
+    }
+
+    getChatgptConversation(profileId) {
+        if (!this.profiles.some(profile => profile.id === profileId)) {
+            throw runtimeError(`浏览器配置不存在: ${profileId}`, 'profile_not_found', 404);
+        }
+        return getProjectConversationState(this.config, profileId);
+    }
+
+    rollChatgptConversation(profileId, reason = 'external') {
+        if (!this.profiles.some(profile => profile.id === profileId)) {
+            throw runtimeError(`浏览器配置不存在: ${profileId}`, 'profile_not_found', 404);
+        }
+        return rollProjectConversation(this.config, profileId, reason);
     }
 
     getVncInfo(profileId) {

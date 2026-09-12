@@ -5,6 +5,7 @@
 
 import { registry } from '../backend/registry.js';
 import { getSiteDefinition } from '../backend/sites/catalog.js';
+import { validateChatgptProjectConfig } from '../backend/adapter/chatgpt-project.js';
 
 export function validateBrowserProfilesConfig(data) {
     const errors = [];
@@ -344,6 +345,8 @@ export function validateAdaptersConfig(data) {
             }
         }
     }
+
+    errors.push(...validateChatgptProjectConfig(data.chatgpt_text));
 
     return { valid: errors.length === 0, errors };
 }
